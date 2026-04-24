@@ -36,6 +36,8 @@ func TestAggregateSamples(t *testing.T) {
 		{recordedAtMs: day, sessionID: "ses_2", provider: "openai", model: "gpt", inputTokens: 200, outputTokens: 20, reasoningTokens: 6, cacheReadTokens: 30, cacheWriteTokens: 2, totalTokens: 258},
 		{recordedAtMs: day, sessionID: "ses_2", provider: "openai", model: "gpt", throughputTokens: 100, durationMs: 1000, tokensPerSecond: 100},
 		{recordedAtMs: day, sessionID: "ses_2", provider: "openai", model: "gpt", throughputTokens: 100, durationMs: 10000, tokensPerSecond: 10},
+		{recordedAtMs: day, sessionID: "ses_2", provider: "openai", model: "gpt", requests: 1},
+		{recordedAtMs: day, sessionID: "ses_2", provider: "openai", model: "gpt", retries: 2},
 	}, groupByNone)
 
 	if len(rows) != 2 {
@@ -51,6 +53,9 @@ func TestAggregateSamples(t *testing.T) {
 	if row.tpsAvg != "18.18" || row.tpsMean != "55.00" || row.tpsMedian != "55.00" {
 		t.Fatalf("unexpected tps: %+v", row)
 	}
+	if row.requests != "1" || row.retries != "2" {
+		t.Fatalf("unexpected request counts: %+v", row)
+	}
 }
 
 func TestAggregateSamplesHourly(t *testing.T) {
@@ -61,6 +66,8 @@ func TestAggregateSamplesHourly(t *testing.T) {
 		{recordedAtMs: day, sessionID: "ses_1", provider: "openai", model: "gpt", inputTokens: 200, outputTokens: 20, reasoningTokens: 6, cacheReadTokens: 30, cacheWriteTokens: 2, totalTokens: 258},
 		{recordedAtMs: day, sessionID: "ses_1", provider: "openai", model: "gpt", throughputTokens: 100, durationMs: 1000, tokensPerSecond: 100},
 		{recordedAtMs: day, sessionID: "ses_1", provider: "openai", model: "gpt", throughputTokens: 100, durationMs: 10000, tokensPerSecond: 10},
+		{recordedAtMs: day, sessionID: "ses_1", provider: "openai", model: "gpt", requests: 1},
+		{recordedAtMs: day, sessionID: "ses_1", provider: "openai", model: "gpt", retries: 1},
 	}, groupByHour)
 
 	if len(rows) != 1 {
@@ -76,6 +83,9 @@ func TestAggregateSamplesHourly(t *testing.T) {
 	if row.tpsAvg != "18.18" || row.tpsMean != "55.00" || row.tpsMedian != "55.00" {
 		t.Fatalf("unexpected tps: %+v", row)
 	}
+	if row.requests != "1" || row.retries != "1" {
+		t.Fatalf("unexpected request counts: %+v", row)
+	}
 }
 
 func TestAggregateSamplesSession(t *testing.T) {
@@ -88,6 +98,9 @@ func TestAggregateSamplesSession(t *testing.T) {
 		{recordedAtMs: day, sessionID: "ses_2", provider: "openai", model: "gpt", throughputTokens: 100, durationMs: 1000, tokensPerSecond: 100},
 		{recordedAtMs: day, sessionID: "ses_1", provider: "openai", model: "gpt", throughputTokens: 100, durationMs: 10000, tokensPerSecond: 10},
 		{recordedAtMs: day, sessionID: "ses_1", provider: "openai", model: "gpt", throughputTokens: 100, durationMs: 1000, tokensPerSecond: 100},
+		{recordedAtMs: day, sessionID: "ses_1", messageID: "msg_1", provider: "openai", model: "gpt", requests: 1, thinkingLevel: "low"},
+		{recordedAtMs: day, sessionID: "ses_1", messageID: "msg_1", provider: "openai", model: "gpt", retries: 1, thinkingLevel: "high"},
+		{recordedAtMs: day, sessionID: "ses_1", messageID: "msg_2", provider: "openai", model: "gpt", requests: 1, thinkingLevel: "medium"},
 	}, groupBySession)
 
 	if len(rows) != 2 {
@@ -102,6 +115,12 @@ func TestAggregateSamplesSession(t *testing.T) {
 	}
 	if row.tpsAvg != "18.18" || row.tpsMean != "55.00" || row.tpsMedian != "55.00" {
 		t.Fatalf("unexpected tps: %+v", row)
+	}
+	if row.requests != "2" || row.retries != "1" {
+		t.Fatalf("unexpected request counts: %+v", row)
+	}
+	if row.thinkingLevels != "medium,high" {
+		t.Fatalf("unexpected thinking levels: %+v", row)
 	}
 }
 
@@ -119,9 +138,11 @@ func TestRenderTable(t *testing.T) {
 		cacheReadTokens:  "50",
 		cacheWriteTokens: "3",
 		totalTokens:      "394",
+		requests:         "2",
+		retries:          "1",
 	}}, groupByNone)
 
-	for _, expected := range []string{"day", "provider", "model", "tps avg", "tps mean", "tps median", "input", "output", "reasoning", "cache read", "cache write", "total", "2026-04-24", "18.18", "394"} {
+	for _, expected := range []string{"day", "provider", "model", "tps avg", "tps mean", "tps median", "input", "output", "reasoning", "cache read", "cache write", "total", "requests", "retries", "2026-04-24", "18.18", "394"} {
 		if !strings.Contains(output, expected) {
 			t.Fatalf("missing %q in %q", expected, output)
 		}
@@ -146,9 +167,11 @@ func TestRenderTableHourly(t *testing.T) {
 		cacheReadTokens:  "50",
 		cacheWriteTokens: "3",
 		totalTokens:      "394",
+		requests:         "2",
+		retries:          "1",
 	}}, groupByHour)
 
-	for _, expected := range []string{"day", "hour", "provider", "model", "tps avg", "input", "2026-04-24", "12:00", "18.18", "394"} {
+	for _, expected := range []string{"day", "hour", "provider", "model", "tps avg", "input", "requests", "retries", "2026-04-24", "12:00", "18.18", "394"} {
 		if !strings.Contains(output, expected) {
 			t.Fatalf("missing %q in %q", expected, output)
 		}
@@ -170,9 +193,12 @@ func TestRenderTableSession(t *testing.T) {
 		cacheReadTokens:  "50",
 		cacheWriteTokens: "3",
 		totalTokens:      "394",
+		requests:         "2",
+		retries:          "1",
+		thinkingLevels:   "low,high",
 	}}, groupBySession)
 
-	for _, expected := range []string{"day", "session id", "provider", "model", "tps avg", "2026-04-24", "34567890", "gpt-5.5", "18.18", "394"} {
+	for _, expected := range []string{"day", "session id", "thinking", "provider", "model", "tps avg", "requests", "retries", "2026-04-24", "34567890", "low,high", "gpt-5.5", "18.18", "394"} {
 		if !strings.Contains(output, expected) {
 			t.Fatalf("missing %q in %q", expected, output)
 		}
@@ -288,6 +314,102 @@ func insertTpsSample(t *testing.T, db *sql.DB, recordedAtMs int64, sessionID str
 	}
 }
 
+func createRequestTable(t *testing.T, db *sql.DB) {
+	t.Helper()
+	_, err := db.Exec(`
+		CREATE TABLE oc_llm_requests (
+			recorded_at_ms INTEGER NOT NULL,
+			session_id TEXT NOT NULL,
+			message_id TEXT NOT NULL,
+			provider TEXT NOT NULL,
+			model TEXT NOT NULL,
+			attempt_index INTEGER NOT NULL,
+			thinking_level TEXT NOT NULL DEFAULT 'unknown'
+		)
+	`)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func createRequestTableWithoutThinking(t *testing.T, db *sql.DB) {
+	t.Helper()
+	_, err := db.Exec(`
+		CREATE TABLE oc_llm_requests (
+			recorded_at_ms INTEGER NOT NULL,
+			session_id TEXT NOT NULL,
+			message_id TEXT NOT NULL,
+			provider TEXT NOT NULL,
+			model TEXT NOT NULL,
+			attempt_index INTEGER NOT NULL
+		)
+	`)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func insertRequest(t *testing.T, db *sql.DB, recordedAtMs int64, sessionID string, attemptIndex int64, thinkingLevel ...string) {
+	t.Helper()
+	level := "unknown"
+	if len(thinkingLevel) > 0 {
+		level = thinkingLevel[0]
+	}
+	messageID := "msg_1"
+	if len(thinkingLevel) > 1 {
+		messageID = thinkingLevel[1]
+	}
+	_, err := db.Exec(
+		"INSERT INTO oc_llm_requests (recorded_at_ms, session_id, message_id, provider, model, attempt_index, thinking_level) VALUES (?, ?, ?, ?, ?, ?, ?)",
+		recordedAtMs,
+		sessionID,
+		messageID,
+		"openai",
+		"gpt",
+		attemptIndex,
+		level,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func insertRequestWithoutThinking(t *testing.T, db *sql.DB, recordedAtMs int64, sessionID string, attemptIndex int64) {
+	t.Helper()
+	_, err := db.Exec(
+		"INSERT INTO oc_llm_requests (recorded_at_ms, session_id, message_id, provider, model, attempt_index) VALUES (?, ?, ?, ?, ?, ?)",
+		recordedAtMs,
+		sessionID,
+		"msg_1",
+		"openai",
+		"gpt",
+		attemptIndex,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestQueryRequestSamplesWithoutThinkingColumn(t *testing.T) {
+	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "oc-tps.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	createRequestTableWithoutThinking(t, db)
+	recordedAtMs := time.Date(2026, 4, 24, 12, 0, 0, 0, time.Local).UnixMilli()
+	insertRequestWithoutThinking(t, db, recordedAtMs, "ses_1", 1)
+
+	samples, err := queryRequestSamples(context.Background(), db, time.Date(2026, 4, 24, 0, 0, 0, 0, time.Local))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(samples) != 1 || samples[0].thinkingLevel != "unknown" {
+		t.Fatalf("unexpected samples: %+v", samples)
+	}
+}
+
 func TestRunTableQueriesDB(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "oc-tps.sqlite")
 	db, err := sql.Open("sqlite", dbPath)
@@ -297,12 +419,15 @@ func TestRunTableQueriesDB(t *testing.T) {
 
 	createTokenEventsTable(t, db)
 	createTpsSamplesTable(t, db)
+	createRequestTable(t, db)
 
 	recordedAtMs := time.Date(2026, 4, 24, 12, 0, 0, 0, time.Local).UnixMilli()
 	insertTokenEvent(t, db, recordedAtMs, "ses_1", 100, 10, 5, 20, 1, 136)
 	insertTokenEvent(t, db, recordedAtMs, "ses_1", 200, 20, 6, 30, 2, 258)
 	insertTpsSample(t, db, recordedAtMs, "ses_1", 100, 1000, 100)
 	insertTpsSample(t, db, recordedAtMs, "ses_1", 100, 10000, 10)
+	insertRequest(t, db, recordedAtMs, "ses_1", 1, "low")
+	insertRequest(t, db, recordedAtMs, "ses_1", 2, "high")
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -319,7 +444,7 @@ func TestRunTableQueriesDB(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for _, expected := range []string{"2026-04-24", "openai", "gpt", "18.18", "55.00", "300", "30", "11", "50", "3", "394"} {
+	for _, expected := range []string{"2026-04-24", "openai", "gpt", "18.18", "55.00", "300", "30", "11", "50", "3", "394", "requests", "retries"} {
 		if !strings.Contains(output.String(), expected) {
 			t.Fatalf("missing %q in %q", expected, output.String())
 		}
@@ -338,10 +463,13 @@ func TestRunTableQueriesDBHourly(t *testing.T) {
 
 	createTokenEventsTable(t, db)
 	createTpsSamplesTable(t, db)
+	createRequestTable(t, db)
 
 	recordedAtMs := time.Date(2026, 4, 24, 12, 0, 0, 0, time.Local).UnixMilli()
 	insertTokenEvent(t, db, recordedAtMs, "ses_1", 100, 10, 5, 20, 1, 136)
 	insertTpsSample(t, db, recordedAtMs, "ses_1", 100, 1000, 100)
+	insertRequest(t, db, recordedAtMs, "ses_1", 1, "low")
+	insertRequest(t, db, recordedAtMs, "ses_1", 2, "high")
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -358,7 +486,7 @@ func TestRunTableQueriesDBHourly(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for _, expected := range []string{"hour", "2026-04-24", "12:00", "openai", "gpt", "100.00", "136"} {
+	for _, expected := range []string{"hour", "2026-04-24", "12:00", "openai", "gpt", "100.00", "136", "requests", "retries"} {
 		if !strings.Contains(output.String(), expected) {
 			t.Fatalf("missing %q in %q", expected, output.String())
 		}
@@ -377,12 +505,15 @@ func TestRunTableQueriesDBSession(t *testing.T) {
 
 	createTokenEventsTable(t, db)
 	createTpsSamplesTable(t, db)
+	createRequestTable(t, db)
 
 	recordedAtMs := time.Date(2026, 4, 24, 12, 0, 0, 0, time.Local).UnixMilli()
 	insertTokenEvent(t, db, recordedAtMs, "ses_1", 100, 10, 5, 20, 1, 136)
 	insertTokenEvent(t, db, recordedAtMs, "ses_2", 200, 20, 6, 30, 2, 258)
 	insertTpsSample(t, db, recordedAtMs, "ses_1", 100, 1000, 100)
 	insertTpsSample(t, db, recordedAtMs, "ses_2", 200, 2000, 100)
+	insertRequest(t, db, recordedAtMs, "ses_1", 1, "low")
+	insertRequest(t, db, recordedAtMs, "ses_1", 2, "high")
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -399,7 +530,7 @@ func TestRunTableQueriesDBSession(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for _, expected := range []string{"session id", "2026-04-24", "ses_1", "ses_2", "openai", "gpt", "100.00", "136", "258"} {
+	for _, expected := range []string{"session id", "thinking", "2026-04-24", "ses_1", "ses_2", "high", "openai", "gpt", "100.00", "136", "258", "requests", "retries"} {
 		if !strings.Contains(output.String(), expected) {
 			t.Fatalf("missing %q in %q", expected, output.String())
 		}

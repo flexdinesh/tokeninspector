@@ -2,7 +2,7 @@
 
 Query token usage data written by the `oc-tokeninspector` OpenCode plugin.
 
-The CLI reads the SQLite database directly, aggregates rows from `oc_token_events`, and opens a styled terminal table grouped by day, provider, and model. With `--group-by=hour`, it expands each day into hourly buckets. With `--group-by=session`, it expands each day into session buckets.
+The CLI reads the SQLite database directly, aggregates rows from `oc_token_events`, `oc_tps_samples`, and `oc_llm_requests`, and opens a styled terminal table grouped by day, provider, and model. With `--group-by=hour`, it expands each day into hourly buckets. With `--group-by=session`, it expands each day into session buckets.
 
 ## Usage
 
@@ -138,35 +138,46 @@ tps mean
 tps median
 ```
 
+Request columns are read from `oc_llm_requests` when the server plugin is installed:
+
+```text
+requests
+retries
+```
+
+`requests` counts initial LLM provider attempts. `retries` counts later attempts for the same session/message/provider/model.
+
+With `--group-by=session`, the table also shows `thinking` after `session id`. It is a comma-separated list of non-unknown thinking levels seen for that session/provider/model row.
+
 ## Example Output
 
 Daily output:
 
 ```text
 ╭────────────┬────────────────┬─────────────────┬─────────┬──────────┬────────────┬───────┬────────┬───────────┬────────────┬─────────────┬───────╮
-│ day        │ provider       │ model           │ tps avg │ tps mean │ tps median │ input │ output │ reasoning │ cache read │ cache write │ total │
-├────────────┼────────────────┼─────────────────┼─────────┼──────────┼────────────┼───────┼────────┼───────────┼────────────┼─────────────┼───────┤
-│ 2026-04-24 │ github-copilot │ claude-opus-4.7 │   68.30 │   553.52 │     127.86 │  112K │     3K │        1K │        75K │         600 │  192K │
-│ 2026-04-24 │ openai         │ gpt-5.5         │   45.24 │  2230.81 │      66.91 │   82K │     1K │       900 │        41K │         300 │  126K │
+│ day        │ provider       │ model           │ tps avg │ tps mean │ tps median │ input │ output │ reasoning │ cache read │ cache write │ total │ requests │ retries │
+├────────────┼────────────────┼─────────────────┼─────────┼──────────┼────────────┼───────┼────────┼───────────┼────────────┼─────────────┼───────┼──────────┼─────────┤
+│ 2026-04-24 │ github-copilot │ claude-opus-4.7 │   68.30 │   553.52 │     127.86 │  112K │     3K │        1K │        75K │         600 │  192K │       12 │       1 │
+│ 2026-04-24 │ openai         │ gpt-5.5         │   45.24 │  2230.81 │      66.91 │   82K │     1K │       900 │        41K │         300 │  126K │        9 │       0 │
 ╰────────────┴────────────────┴─────────────────┴─────────┴──────────┴────────────┴───────┴────────┴───────────┴────────────┴─────────────┴───────╯
 ```
 
 Hourly output:
 
 ```text
-day        | hour  | provider       | model           | tps avg | tps mean | tps median | input | output | reasoning | cache read | cache write | total
-2026-04-24 | 16:00 | github-copilot | claude-opus-4.7 |   68.30 |   553.52 |     127.86 |   32K |    900 |       300 |        21K |         200 |   54K
-2026-04-24 | 16:00 | openai         | gpt-5.5         |   45.24 |  2230.81 |      66.91 |   21K |    500 |       250 |        12K |         100 |   33K
+day        | hour  | provider       | model           | tps avg | tps mean | tps median | input | output | reasoning | cache read | cache write | total | requests | retries
+2026-04-24 | 16:00 | github-copilot | claude-opus-4.7 |   68.30 |   553.52 |     127.86 |   32K |    900 |       300 |        21K |         200 |   54K |        4 |       1
+2026-04-24 | 16:00 | openai         | gpt-5.5         |   45.24 |  2230.81 |      66.91 |   21K |    500 |       250 |        12K |         100 |   33K |        3 |       0
 ```
 
 Session output:
 
 ```text
-day        | session id | provider       | model           | tps avg | tps mean | tps median | input | output | reasoning | cache read | cache write | total
-2026-04-24 | ses_abc    | github-copilot | claude-opus-4.7 |   68.30 |   553.52 |     127.86 |   32K |    900 |       300 |        21K |         200 |   54K
-2026-04-24 | ses_xyz    | openai         | gpt-5.5         |   45.24 |  2230.81 |      66.91 |   21K |    500 |       250 |        12K |         100 |   33K
+day        | session id | thinking | provider       | model           | tps avg | tps mean | tps median | input | output | reasoning | cache read | cache write | total | requests | retries
+2026-04-24 | ses_abc    | high     | github-copilot | claude-opus-4.7 |   68.30 |   553.52 |     127.86 |   32K |    900 |       300 |        21K |         200 |   54K |        4 |       1
+2026-04-24 | ses_xyz    | low,high | openai         | gpt-5.5         |   45.24 |  2230.81 |      66.91 |   21K |    500 |       250 |        12K |         100 |   33K |        3 |       0
 ```
 
 ## Notes
 
-The database filename is still `oc-tps.sqlite` for compatibility with local paths. Current tables are `oc_token_events` and `oc_tps_samples`.
+The database filename is still `oc-tps.sqlite` for compatibility with local paths. Current tables are `oc_token_events`, `oc_tps_samples`, and `oc_llm_requests`.

@@ -91,6 +91,7 @@ type filters struct {
 type sample struct {
 	recordedAtMs     int64
 	sessionID        string
+	messageID        string
 	provider         string
 	model            string
 	inputTokens      int64
@@ -102,6 +103,9 @@ type sample struct {
 	throughputTokens int64
 	durationMs       int64
 	tokensPerSecond  float64
+	requests         int64
+	retries          int64
+	thinkingLevel    string
 }
 
 type tableRow struct {
@@ -119,6 +123,9 @@ type tableRow struct {
 	cacheReadTokens  string
 	cacheWriteTokens string
 	totalTokens      string
+	requests         string
+	retries          string
+	thinkingLevels   string
 }
 
 type aggregate struct {
@@ -132,6 +139,9 @@ type aggregate struct {
 	durationMs       int64
 	sumTPS           float64
 	tpsValues        []float64
+	requests         int64
+	retries          int64
+	thinkingLevels   map[string]bool
 }
 
 type tableOptions struct {
@@ -320,15 +330,27 @@ func querySamples(ctx context.Context, dbPath string, start time.Time) ([]sample
 	if err != nil {
 		return nil, err
 	}
-	if !exists {
-		return samples, nil
+	if exists {
+		tpsSamples, err := queryTpsSamples(ctx, db, start)
+		if err != nil {
+			return nil, err
+		}
+		samples = append(samples, tpsSamples...)
 	}
-	tpsSamples, err := queryTpsSamples(ctx, db, start)
+
+	exists, err = tableExists(ctx, db, "oc_llm_requests")
 	if err != nil {
 		return nil, err
 	}
+	if exists {
+		requestSamples, err := queryRequestSamples(ctx, db, start)
+		if err != nil {
+			return nil, err
+		}
+		samples = append(samples, requestSamples...)
+	}
 
-	return append(samples, tpsSamples...), nil
+	return samples, nil
 }
 
 func queryTokenSamples(ctx context.Context, db *sql.DB, start time.Time) ([]sample, error) {
@@ -400,6 +422,68 @@ func queryTpsSamples(ctx context.Context, db *sql.DB, start time.Time) ([]sample
 	}
 
 	return samples, nil
+}
+
+func queryRequestSamples(ctx context.Context, db *sql.DB, start time.Time) ([]sample, error) {
+	thinkingSelect := "'unknown'"
+	exists, err := columnExists(ctx, db, "oc_llm_requests", "thinking_level")
+	if err != nil {
+		return nil, err
+	}
+	if exists {
+		thinkingSelect = "thinking_level"
+	}
+
+	rows, err := db.QueryContext(ctx, `
+		SELECT recorded_at_ms, session_id, message_id, provider, model, attempt_index, `+thinkingSelect+`
+		FROM oc_llm_requests
+		WHERE recorded_at_ms >= ?
+		ORDER BY recorded_at_ms ASC, attempt_index ASC
+	`, start.UnixMilli())
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var samples []sample
+	for rows.Next() {
+		var next sample
+		var attemptIndex int64
+		if err := rows.Scan(
+			&next.recordedAtMs,
+			&next.sessionID,
+			&next.messageID,
+			&next.provider,
+			&next.model,
+			&attemptIndex,
+			&next.thinkingLevel,
+		); err != nil {
+			return nil, err
+		}
+		if attemptIndex > 1 {
+			next.retries = 1
+		} else {
+			next.requests = 1
+		}
+		samples = append(samples, next)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return samples, nil
+}
+
+func columnExists(ctx context.Context, db *sql.DB, tableName string, columnName string) (bool, error) {
+	var count int
+	if err := db.QueryRowContext(ctx, `
+		SELECT COUNT(*)
+		FROM pragma_table_info(?)
+		WHERE name = ?
+	`, tableName, columnName).Scan(&count); err != nil {
+		return false, err
+	}
+	return count > 0, nil
 }
 
 func tableExists(ctx context.Context, db *sql.DB, name string) (bool, error) {
@@ -493,6 +577,7 @@ func openDB(dbPath string) (*sql.DB, error) {
 }
 
 func aggregateSamples(samples []sample, groupBy groupByMode) []tableRow {
+	samples = resolveMessageThinking(samples)
 	switch groupBy {
 	case groupByHour:
 		return aggregateHourlySamples(samples)
@@ -501,6 +586,45 @@ func aggregateSamples(samples []sample, groupBy groupByMode) []tableRow {
 	default:
 		return aggregateDailySamples(samples)
 	}
+}
+
+func resolveMessageThinking(samples []sample) []sample {
+	type messageKey struct {
+		sessionID string
+		messageID string
+		provider  string
+		model     string
+	}
+
+	thinkingByMessage := map[messageKey]string{}
+	for _, item := range samples {
+		if item.messageID == "" || item.thinkingLevel == "" || item.thinkingLevel == "unknown" {
+			continue
+		}
+		thinkingByMessage[messageKey{
+			sessionID: item.sessionID,
+			messageID: item.messageID,
+			provider:  item.provider,
+			model:     item.model,
+		}] = item.thinkingLevel
+	}
+
+	resolved := make([]sample, 0, len(samples))
+	for _, item := range samples {
+		if item.thinkingLevel != "" {
+			item.thinkingLevel = ""
+			if item.messageID != "" && item.requests > 0 {
+				item.thinkingLevel = thinkingByMessage[messageKey{
+					sessionID: item.sessionID,
+					messageID: item.messageID,
+					provider:  item.provider,
+					model:     item.model,
+				}]
+			}
+		}
+		resolved = append(resolved, item)
+	}
+	return resolved
 }
 
 func aggregateDailySamples(samples []sample) []tableRow {
@@ -541,6 +665,9 @@ func aggregateDailySamples(samples []sample) []tableRow {
 			cacheReadTokens:  formatTokens(current.cacheReadTokens),
 			cacheWriteTokens: formatTokens(current.cacheWriteTokens),
 			totalTokens:      formatTokens(current.totalTokens),
+			requests:         formatTokens(current.requests),
+			retries:          formatTokens(current.retries),
+			thinkingLevels:   formatThinkingLevels(current),
 		})
 	}
 
@@ -599,6 +726,9 @@ func aggregateHourlySamples(samples []sample) []tableRow {
 			cacheReadTokens:  formatTokens(current.cacheReadTokens),
 			cacheWriteTokens: formatTokens(current.cacheWriteTokens),
 			totalTokens:      formatTokens(current.totalTokens),
+			requests:         formatTokens(current.requests),
+			retries:          formatTokens(current.retries),
+			thinkingLevels:   formatThinkingLevels(current),
 		})
 	}
 
@@ -659,6 +789,9 @@ func aggregateSessionSamples(samples []sample) []tableRow {
 			cacheReadTokens:  formatTokens(current.cacheReadTokens),
 			cacheWriteTokens: formatTokens(current.cacheWriteTokens),
 			totalTokens:      formatTokens(current.totalTokens),
+			requests:         formatTokens(current.requests),
+			retries:          formatTokens(current.retries),
+			thinkingLevels:   formatThinkingLevels(current),
 		})
 	}
 
@@ -685,12 +818,44 @@ func addSample(current *aggregate, item sample) {
 	current.cacheReadTokens += item.cacheReadTokens
 	current.cacheWriteTokens += item.cacheWriteTokens
 	current.totalTokens += item.totalTokens
+	current.requests += item.requests
+	current.retries += item.retries
+	if item.thinkingLevel != "" && item.thinkingLevel != "unknown" {
+		if current.thinkingLevels == nil {
+			current.thinkingLevels = map[string]bool{}
+		}
+		current.thinkingLevels[item.thinkingLevel] = true
+	}
 	if item.durationMs > 0 {
 		current.throughputTokens += item.throughputTokens
 		current.durationMs += item.durationMs
 		current.sumTPS += item.tokensPerSecond
 		current.tpsValues = append(current.tpsValues, item.tokensPerSecond)
 	}
+}
+
+func formatThinkingLevels(current *aggregate) string {
+	if len(current.thinkingLevels) == 0 {
+		return ""
+	}
+	order := []string{"low", "medium", "high", "xhigh"}
+	values := make([]string, 0, len(current.thinkingLevels))
+	orderedValues := map[string]bool{}
+	for _, value := range order {
+		if current.thinkingLevels[value] {
+			values = append(values, value)
+		}
+		orderedValues[value] = true
+	}
+	extra := make([]string, 0)
+	for value := range current.thinkingLevels {
+		if !orderedValues[value] {
+			extra = append(extra, value)
+		}
+	}
+	sort.Strings(extra)
+	values = append(values, extra...)
+	return strings.Join(values, ",")
 }
 
 func (model interactiveModel) Init() tea.Cmd {
@@ -735,12 +900,12 @@ var (
 )
 
 func renderTableWithWidth(rows []tableRow, groupBy groupByMode, width int) string {
-	header := []string{"day", "provider", "model", "tps avg", "tps mean", "tps median", "input", "output", "reasoning", "cache read", "cache write", "total"}
+	header := []string{"day", "provider", "model", "tps avg", "tps mean", "tps median", "input", "output", "reasoning", "cache read", "cache write", "total", "requests", "retries"}
 	switch groupBy {
 	case groupByHour:
-		header = []string{"day", "hour", "provider", "model", "tps avg", "tps mean", "tps median", "input", "output", "reasoning", "cache read", "cache write", "total"}
+		header = []string{"day", "hour", "provider", "model", "tps avg", "tps mean", "tps median", "input", "output", "reasoning", "cache read", "cache write", "total", "requests", "retries"}
 	case groupBySession:
-		header = []string{"day", "session id", "provider", "model", "tps avg", "tps mean", "tps median", "input", "output", "reasoning", "cache read", "cache write", "total"}
+		header = []string{"day", "session id", "thinking", "provider", "model", "tps avg", "tps mean", "tps median", "input", "output", "reasoning", "cache read", "cache write", "total", "requests", "retries"}
 	}
 	formatted := make([][]string, 0, len(rows))
 
@@ -758,6 +923,8 @@ func renderTableWithWidth(rows []tableRow, groupBy groupByMode, width int) strin
 			row.cacheReadTokens,
 			row.cacheWriteTokens,
 			row.totalTokens,
+			row.requests,
+			row.retries,
 		}
 		switch groupBy {
 		case groupByHour:
@@ -775,11 +942,14 @@ func renderTableWithWidth(rows []tableRow, groupBy groupByMode, width int) strin
 				row.cacheReadTokens,
 				row.cacheWriteTokens,
 				row.totalTokens,
+				row.requests,
+				row.retries,
 			}
 		case groupBySession:
 			values = []string{
 				row.day,
 				displaySessionID(row.sessionID),
+				row.thinkingLevels,
 				row.provider,
 				displayModel(row.model),
 				row.tpsAvg,
@@ -791,14 +961,18 @@ func renderTableWithWidth(rows []tableRow, groupBy groupByMode, width int) strin
 				row.cacheReadTokens,
 				row.cacheWriteTokens,
 				row.totalTokens,
+				row.requests,
+				row.retries,
 			}
 		}
 		formatted = append(formatted, values)
 	}
 
 	numberStart := 3
-	if groupBy != groupByNone {
+	if groupBy == groupByHour {
 		numberStart = 4
+	} else if groupBy == groupBySession {
+		numberStart = 5
 	}
 
 	uiTable := table.New().

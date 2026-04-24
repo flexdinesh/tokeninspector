@@ -3,13 +3,24 @@
 `tokeninspector` records local OpenCode token usage and prints aggregate token usage tables.
 
 - `plugins/oc-tokeninspector.tsx`: OpenCode TUI plugin that records token and TPS data to SQLite.
+- `plugins/oc-tokeninspector-server.ts`: OpenCode server plugin that records LLM request attempts to SQLite.
 - `cli/`: Go CLI that reads the SQLite DB and renders aggregate tables.
 
-## Install OpenCode Plugin
+## Install OpenCode Plugins
 
-Add the plugin path to OpenCode TUI config:
+Add the server plugin to `opencode.jsonc`:
 
-```json
+```jsonc
+{
+  "plugin": [
+    "/Users/dineshpandiyan/workspace/tokeninspector/plugins/oc-tokeninspector-server.ts"
+  ]
+}
+```
+
+Add the TUI plugin to `tui.json`:
+
+```jsonc
 {
   "plugin": [
     "/Users/dineshpandiyan/workspace/tokeninspector/plugins/oc-tokeninspector.tsx"
@@ -17,7 +28,9 @@ Add the plugin path to OpenCode TUI config:
 }
 ```
 
-Plugin id: `oc-tokeninspector`.
+Do not add `plugins/oc-tokeninspector-writer.ts` to config. It is a worker module loaded by the TUI plugin.
+
+Plugin ids: `oc-tokeninspector` for the TUI plugin and `oc-tokeninspector-server` for the server plugin.
 
 ## Purpose
 
@@ -26,6 +39,8 @@ North star: session-centric token time series.
 Every durable token row has `session_id`. Token usage should be queryable by time, session, provider, and model without vendor dashboards.
 
 TPS is also a first-class project metric. Do not remove `oc_tps_samples`, `tps avg`, `tps mean`, or `tps median` when changing token columns.
+
+LLM request attempts are tracked separately from token and TPS rows. `requests` counts initial attempts. `retries` counts later attempts for the same session/message/provider/model.
 
 ## Storage
 
@@ -43,7 +58,7 @@ On this machine:
 
 The DB filename remains `oc-tps.sqlite` for compatibility with existing local paths, but durable tables are `oc_token_events` and `oc_tps_samples`.
 
-Plugin options:
+TUI plugin options:
 
 ```json
 {
@@ -56,7 +71,20 @@ Plugin options:
 
 `retentionDays` defaults to `365`. Values `<= 0` keep data forever.
 
-The plugin uses `bun:sqlite`, WAL, and `busy_timeout = 5000`.
+Server plugin overrides:
+
+```text
+OC_TOKENINSPECTOR_DB_PATH
+OC_TOKENINSPECTOR_RETENTION_DAYS
+```
+
+Relative server DB paths resolve under `XDG_STATE_HOME/opencode` or `~/.local/state/opencode`.
+
+The TUI plugin sends SQLite work to `plugins/oc-tokeninspector-writer.ts`, a Bun worker. The worker uses `bun:sqlite`, WAL, and `busy_timeout = 5000`.
+
+TUI writes are queued in memory, flushed to the worker about once per second, and flushed immediately on session idle/delete/dispose. A hard crash can lose the most recent queued batch.
+
+Retention pruning runs in the worker at most once per local day. Values `<= 0` disable pruning.
 
 The CLI opens the DB read-only using `modernc.org/sqlite` with a `file:` URL and `mode=ro`.
 
@@ -160,6 +188,51 @@ duration_ms
 tokens_per_second
 ```
 
+## LLM Request Table
+
+Table name:
+
+```text
+oc_llm_requests
+```
+
+Columns:
+
+```text
+id INTEGER PRIMARY KEY AUTOINCREMENT
+recorded_at TEXT NOT NULL
+recorded_at_ms INTEGER NOT NULL
+session_id TEXT NOT NULL
+message_id TEXT NOT NULL
+provider TEXT NOT NULL DEFAULT 'unknown'
+model TEXT NOT NULL DEFAULT 'unknown'
+attempt_index INTEGER NOT NULL CHECK (attempt_index > 0)
+thinking_level TEXT NOT NULL DEFAULT 'unknown'
+```
+
+Indexes:
+
+```text
+recorded_at_ms
+(session_id, recorded_at_ms)
+(provider, model, recorded_at_ms)
+```
+
+Required request columns read by the CLI:
+
+```text
+recorded_at_ms
+session_id
+provider
+model
+attempt_index
+thinking_level
+```
+
+`attempt_index == 1` contributes to `requests`. `attempt_index > 1` contributes to `retries`.
+
+`thinking_level` is best-effort session metadata captured from chat params when available. Expected values are `low`, `medium`, `high`, `xhigh`, or `unknown`.
+
 ## Token Semantics
 
 `total_tokens` uses OpenCode `tokens.total` when present.
@@ -180,9 +253,9 @@ Used only for live TUI display. Text/reasoning deltas are estimated as `ceil(byt
 
 `message.part.updated`
 
-When `part.type == "step-finish"`, write a true time-series token event with source `step-finish`.
+When `part.type == "step-finish"`, queue a true time-series token event with source `step-finish`.
 
-If provider/model metadata is not known yet, write the row with `unknown`; later `message.updated` backfills rows for the message.
+If provider/model metadata is not known yet, queue the row with `unknown`; later `message.updated` queues a backfill for rows for the message.
 
 Tool parts still affect live TPS timing:
 
@@ -192,23 +265,40 @@ Tool parts still affect live TPS timing:
 
 `message.updated`
 
-Assistant messages update message metadata: `session_id`, provider, model.
+Assistant messages queue message metadata updates: `session_id`, provider, model.
 
 When a completed assistant message has no step rows, queue a `message-fallback` token row. This protects against missing step-finish data.
 
-Completed assistant messages also write one `oc_tps_samples` row when timing data is available. This is the durable source for CLI `tps avg`, `tps mean`, and `tps median`.
+Completed assistant messages also queue one `oc_tps_samples` row when timing data is available. This is the durable source for CLI `tps avg`, `tps mean`, and `tps median`.
 
 `session.idle`
 
-Scans current session state for completed assistant messages, queues missing fallback rows, then flushes pending rows for that session.
+Scans current session state for completed assistant messages, queues missing fallback rows, then sends pending rows for that session to the writer worker.
 
 `session.deleted`
 
-Attempts the same fallback scan, then flushes pending rows for that session.
+Attempts the same fallback scan, then sends pending rows for that session to the writer worker.
 
 Plugin dispose
 
-Scans seen sessions for fallback rows, flushes all pending rows, unsubscribes events, clears timer, and closes DB.
+Scans seen sessions for fallback rows, sends all pending rows to the writer worker, unsubscribes events, clears timer, and asks the worker to close the DB.
+
+## Server Plugin Flow
+
+`chat.headers`
+
+Runs before an LLM provider request. The server plugin writes one `oc_llm_requests` row for each invocation. Attempts are tracked in memory by session/message/provider/model.
+
+`chat.params`
+
+Captures thinking level from known params/options shapes before request headers are built. If unavailable, request rows store `unknown`.
+
+Limitations:
+
+- Counts request attempts, not confirmed HTTP success.
+- Retries are counted only if OpenCode calls `chat.headers` again for retry attempts.
+- Does not count tool network calls, MCP traffic, auth/OAuth, provider metadata lookups, plugin-owned fetches, install/update checks, or local TUI/server API calls.
+- Thinking level depends on OpenCode/provider params shape and may be `unknown`.
 
 ## TUI Display
 
@@ -336,6 +426,15 @@ tps median: median of row-level tokens_per_second
 
 TPS `total_tokens` is output + reasoning and is separate from token-event `total_tokens`.
 
+Request columns come from `oc_llm_requests`:
+
+```text
+requests: count(attempt_index == 1)
+retries: count(attempt_index > 1)
+```
+
+In session grouping only, the `thinking` column shows a comma-separated list of non-unknown thinking levels seen for that session/provider/model row.
+
 ## Sorting
 
 Default:
@@ -358,7 +457,7 @@ day desc, session id asc, provider asc, model asc
 
 ## Rendering
 
-`renderTable` builds rows as strings, calculates widths, left-aligns text columns, and right-aligns numeric TPS/token columns.
+`renderTable` builds rows as strings, calculates widths, left-aligns text columns, and right-aligns numeric TPS/token/request columns.
 
 Numeric columns start at:
 

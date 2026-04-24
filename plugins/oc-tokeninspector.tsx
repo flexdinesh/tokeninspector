@@ -1,7 +1,5 @@
 /** @jsxImportSource @opentui/solid */
-import { mkdirSync } from "node:fs"
-import { dirname, isAbsolute, join } from "node:path"
-import { Database } from "bun:sqlite"
+import { isAbsolute, join } from "node:path"
 import type { TuiPlugin, TuiPluginModule } from "@opencode-ai/plugin/tui"
 import { createMemo, createSignal } from "solid-js"
 
@@ -15,7 +13,6 @@ const LIVE_STALE_MS = 1_500
 const SINGLE_SAMPLE_MS = 1_000
 const DEFAULT_DB_NAME = "oc-tps.sqlite"
 const DEFAULT_RETENTION_DAYS = 365
-const DAY_MS = 24 * 60 * 60 * 1000
 const UNKNOWN_VALUE = "unknown"
 
 type MessageTiming = {
@@ -97,9 +94,18 @@ type TokenStorageConfig = {
 }
 
 type TokenStorage = {
-  flush: (tokenRows: TokenEventRow[], tpsRows: TpsSampleRow[]) => void
-  updateMessageInfo: (messageID: string, info: MessageInfo) => void
+  flush: (tokenRows: TokenEventRow[], tpsRows: TpsSampleRow[], infoUpdates: MessageInfoUpdate[]) => void
   close: () => void
+}
+
+type MessageInfoUpdate = {
+  messageID: string
+  info: MessageInfo
+}
+
+type WriterResponse = {
+  type: "ready" | "flushed" | "closed" | "error"
+  message?: string
 }
 
 function readStringOption(options: Record<string, unknown> | undefined, key: string) {
@@ -128,223 +134,23 @@ function storageConfig(statePath: string, options: Record<string, unknown> | und
   }
 }
 
-function createTokenStorage(config: TokenStorageConfig): TokenStorage {
-  mkdirSync(dirname(config.dbPath), { recursive: true })
-
-  const db = new Database(config.dbPath)
-  db.exec("PRAGMA journal_mode = WAL")
-  db.exec("PRAGMA busy_timeout = 5000")
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS oc_token_events (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      recorded_at TEXT NOT NULL,
-      recorded_at_ms INTEGER NOT NULL,
-      session_id TEXT NOT NULL,
-      message_id TEXT NOT NULL,
-      part_id TEXT NOT NULL,
-      source TEXT NOT NULL CHECK (source IN ('step-finish', 'message-fallback')),
-      provider TEXT NOT NULL DEFAULT 'unknown',
-      model TEXT NOT NULL DEFAULT 'unknown',
-      input_tokens INTEGER NOT NULL,
-      output_tokens INTEGER NOT NULL,
-      reasoning_tokens INTEGER NOT NULL,
-      cache_read_tokens INTEGER NOT NULL,
-      cache_write_tokens INTEGER NOT NULL,
-      total_tokens INTEGER NOT NULL,
-      UNIQUE(session_id, message_id, part_id)
-    )
-  `)
-  db.exec("CREATE INDEX IF NOT EXISTS oc_token_events_recorded_at_ms_idx ON oc_token_events (recorded_at_ms)")
-  db.exec("CREATE INDEX IF NOT EXISTS oc_token_events_session_time_idx ON oc_token_events (session_id, recorded_at_ms)")
-  db.exec(
-    "CREATE INDEX IF NOT EXISTS oc_token_events_provider_model_time_idx ON oc_token_events (provider, model, recorded_at_ms)",
-  )
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS oc_tps_samples (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      recorded_at TEXT NOT NULL,
-      recorded_at_ms INTEGER NOT NULL,
-      session_id TEXT NOT NULL,
-      message_id TEXT NOT NULL UNIQUE,
-      provider TEXT NOT NULL DEFAULT 'unknown',
-      model TEXT NOT NULL DEFAULT 'unknown',
-      output_tokens INTEGER NOT NULL,
-      reasoning_tokens INTEGER NOT NULL,
-      total_tokens INTEGER NOT NULL,
-      duration_ms INTEGER NOT NULL,
-      ttft_ms INTEGER NOT NULL,
-      tokens_per_second REAL NOT NULL
-    )
-  `)
-  db.exec("CREATE INDEX IF NOT EXISTS oc_tps_samples_recorded_at_ms_idx ON oc_tps_samples (recorded_at_ms)")
-  db.exec("CREATE INDEX IF NOT EXISTS oc_tps_samples_session_time_idx ON oc_tps_samples (session_id, recorded_at_ms)")
-  db.exec(
-    "CREATE INDEX IF NOT EXISTS oc_tps_samples_provider_model_time_idx ON oc_tps_samples (provider, model, recorded_at_ms)",
-  )
-
-  const insertEvent = db.prepare(`
-    INSERT OR IGNORE INTO oc_token_events (
-      recorded_at,
-      recorded_at_ms,
-      session_id,
-      message_id,
-      part_id,
-      source,
-      provider,
-      model,
-      input_tokens,
-      output_tokens,
-      reasoning_tokens,
-      cache_read_tokens,
-      cache_write_tokens,
-      total_tokens
-    ) VALUES (
-      $recordedAt,
-      $recordedAtMs,
-      $sessionID,
-      $messageID,
-      $partID,
-      $source,
-      $provider,
-      $model,
-      $inputTokens,
-      $outputTokens,
-      $reasoningTokens,
-      $cacheReadTokens,
-      $cacheWriteTokens,
-      $totalTokens
-    )
-  `)
-  const deleteFallback = db.prepare(`
-    DELETE FROM oc_token_events
-    WHERE session_id = $sessionID
-      AND message_id = $messageID
-      AND source = 'message-fallback'
-  `)
-  const existingStepRow = db.prepare(`
-    SELECT 1
-    FROM oc_token_events
-    WHERE session_id = $sessionID
-      AND message_id = $messageID
-      AND source = 'step-finish'
-    LIMIT 1
-  `)
-  const updateMessageInfo = db.prepare(`
-    UPDATE oc_token_events
-    SET provider = $provider,
-        model = $model
-    WHERE session_id = $sessionID
-      AND message_id = $messageID
-  `)
-  const updateTpsInfo = db.prepare(`
-    UPDATE oc_tps_samples
-    SET provider = $provider,
-        model = $model
-    WHERE session_id = $sessionID
-      AND message_id = $messageID
-  `)
-  const insertTpsSample = db.prepare(`
-    INSERT OR IGNORE INTO oc_tps_samples (
-      recorded_at,
-      recorded_at_ms,
-      session_id,
-      message_id,
-      provider,
-      model,
-      output_tokens,
-      reasoning_tokens,
-      total_tokens,
-      duration_ms,
-      ttft_ms,
-      tokens_per_second
-    ) VALUES (
-      $recordedAt,
-      $recordedAtMs,
-      $sessionID,
-      $messageID,
-      $provider,
-      $model,
-      $outputTokens,
-      $reasoningTokens,
-      $totalTokens,
-      $durationMs,
-      $ttftMs,
-      $tokensPerSecond
-    )
-  `)
-  const pruneEvents = db.prepare("DELETE FROM oc_token_events WHERE recorded_at_ms < $cutoff")
-  const pruneTpsSamples = db.prepare("DELETE FROM oc_tps_samples WHERE recorded_at_ms < $cutoff")
-  const insertRows = db.transaction((rows: TokenEventRow[]) => {
-    for (const row of rows) {
-      if (row.source === "step-finish") {
-        deleteFallback.run({ $sessionID: row.sessionID, $messageID: row.messageID })
-      } else if (existingStepRow.get({ $sessionID: row.sessionID, $messageID: row.messageID })) {
-        continue
-      }
-      insertEvent.run({
-        $recordedAt: row.recordedAt,
-        $recordedAtMs: row.recordedAtMs,
-        $sessionID: row.sessionID,
-        $messageID: row.messageID,
-        $partID: row.partID,
-        $source: row.source,
-        $provider: row.provider,
-        $model: row.model,
-        $inputTokens: row.inputTokens,
-        $outputTokens: row.outputTokens,
-        $reasoningTokens: row.reasoningTokens,
-        $cacheReadTokens: row.cacheReadTokens,
-        $cacheWriteTokens: row.cacheWriteTokens,
-        $totalTokens: row.totalTokens,
-      })
-    }
-  })
-  const insertTpsRows = db.transaction((rows: TpsSampleRow[]) => {
-    for (const row of rows) {
-      insertTpsSample.run({
-        $recordedAt: row.recordedAt,
-        $recordedAtMs: row.recordedAtMs,
-        $sessionID: row.sessionID,
-        $messageID: row.messageID,
-        $provider: row.provider,
-        $model: row.model,
-        $outputTokens: row.outputTokens,
-        $reasoningTokens: row.reasoningTokens,
-        $totalTokens: row.totalTokens,
-        $durationMs: row.durationMs,
-        $ttftMs: row.ttftMs,
-        $tokensPerSecond: row.tokensPerSecond,
-      })
-    }
-  })
+function createTokenStorage(config: TokenStorageConfig, onError: () => void): TokenStorage {
+  const worker = new Worker(new URL("./oc-tokeninspector-writer.ts", import.meta.url))
+  worker.onmessage = (event: MessageEvent<WriterResponse>) => {
+    if (event.data.type === "error") onError()
+  }
+  worker.onerror = () => {
+    onError()
+  }
+  worker.postMessage({ type: "init", dbPath: config.dbPath, retentionDays: config.retentionDays })
 
   return {
-    flush(tokenRows, tpsRows) {
-      if (tokenRows.length === 0 && tpsRows.length === 0) return
-      insertRows(tokenRows)
-      insertTpsRows(tpsRows)
-      if (config.retentionDays > 0) {
-        const cutoff = Date.now() - config.retentionDays * DAY_MS
-        pruneEvents.run({ $cutoff: cutoff })
-        pruneTpsSamples.run({ $cutoff: cutoff })
-      }
-    },
-    updateMessageInfo(messageID, info) {
-      updateMessageInfo.run({
-        $messageID: messageID,
-        $sessionID: info.sessionID,
-        $provider: info.provider,
-        $model: info.model,
-      })
-      updateTpsInfo.run({
-        $messageID: messageID,
-        $sessionID: info.sessionID,
-        $provider: info.provider,
-        $model: info.model,
-      })
+    flush(tokenRows, tpsRows, infoUpdates) {
+      if (tokenRows.length === 0 && tpsRows.length === 0 && infoUpdates.length === 0) return
+      worker.postMessage({ type: "flush", tokenRows, tpsRows, infoUpdates })
     },
     close() {
-      db.close()
+      worker.postMessage({ type: "close" })
     },
   }
 }
@@ -482,6 +288,7 @@ const tui: TuiPlugin = async (api, options) => {
   }
   let pendingRows: TokenEventRow[] = []
   let pendingTpsRows: TpsSampleRow[] = []
+  let pendingInfoUpdates: MessageInfoUpdate[] = []
   const messageInfoByID: Record<string, MessageInfo> = {}
   const seenSessionIDs = new Set<string>()
   const messagesWithStepRows = new Set<string>()
@@ -492,28 +299,34 @@ const tui: TuiPlugin = async (api, options) => {
 
   const bump = () => setVersion((value) => value + 1)
 
-  try {
-    storage = createTokenStorage(storageConfig(api.state.path.state, options))
-  } catch {
-    api.ui.toast({ variant: "error", message: "oc-tokeninspector sqlite unavailable" })
-  }
-
   const showStorageError = () => {
     if (storageErrorShown) return
     storageErrorShown = true
     api.ui.toast({ variant: "error", message: "oc-tokeninspector sqlite write failed" })
   }
 
+  try {
+    storage = createTokenStorage(storageConfig(api.state.path.state, options), showStorageError)
+  } catch {
+    api.ui.toast({ variant: "error", message: "oc-tokeninspector sqlite unavailable" })
+  }
+
   const flushRows = (sessionID?: string) => {
     if (!storage) return
     const rows = sessionID ? pendingRows.filter((row) => row.sessionID === sessionID) : pendingRows
     const tpsRows = sessionID ? pendingTpsRows.filter((row) => row.sessionID === sessionID) : pendingTpsRows
-    if (rows.length === 0 && tpsRows.length === 0) return
+    const infoUpdates = sessionID
+      ? pendingInfoUpdates.filter((update) => update.info.sessionID === sessionID)
+      : pendingInfoUpdates
+    if (rows.length === 0 && tpsRows.length === 0 && infoUpdates.length === 0) return
 
     try {
-      storage.flush(rows, tpsRows)
+      storage.flush(rows, tpsRows, infoUpdates)
       pendingRows = sessionID ? pendingRows.filter((row) => row.sessionID !== sessionID) : []
       pendingTpsRows = sessionID ? pendingTpsRows.filter((row) => row.sessionID !== sessionID) : []
+      pendingInfoUpdates = sessionID
+        ? pendingInfoUpdates.filter((update) => update.info.sessionID !== sessionID)
+        : []
     } catch {
       showStorageError()
     }
@@ -531,11 +344,10 @@ const tui: TuiPlugin = async (api, options) => {
         ? { ...row, provider: info.provider, model: info.model }
         : row,
     )
-    try {
-      storage?.updateMessageInfo(messageID, info)
-    } catch {
-      showStorageError()
-    }
+    pendingInfoUpdates = [
+      ...pendingInfoUpdates.filter((update) => update.info.sessionID !== info.sessionID || update.messageID !== messageID),
+      { messageID, info },
+    ]
   }
 
   const queueTokenEvent = (row: TokenEventRow) => {
@@ -792,6 +604,7 @@ const tui: TuiPlugin = async (api, options) => {
   const timer = setInterval(() => {
     setClock(Date.now())
     pruneSamples()
+    flushRows()
   }, 1000)
 
   api.lifecycle.onDispose(() => {
