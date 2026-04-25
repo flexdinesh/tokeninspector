@@ -387,10 +387,12 @@ func TestAggregateSession(t *testing.T) {
 	defer db.Close()
 
 	day := time.Date(2026, 4, 24, 12, 0, 0, 0, time.Local).UnixMilli()
+	later := time.Date(2026, 4, 24, 13, 0, 0, 0, time.Local).UnixMilli()
+
 	insertTokenEvent(t, db, day, "ses_1", "openai", "gpt", 100, 10, 5, 20, 1, 136)
-	insertTokenEvent(t, db, day, "ses_2", "openai", "gpt", 200, 20, 6, 30, 2, 258)
+	insertTokenEvent(t, db, later, "ses_2", "openai", "gpt", 200, 20, 6, 30, 2, 258)
 	insertTpsSample(t, db, day, "ses_1", "openai", "gpt", 100, 1000, 100)
-	insertTpsSample(t, db, day, "ses_2", "openai", "gpt", 200, 2000, 100)
+	insertTpsSample(t, db, later, "ses_2", "openai", "gpt", 200, 2000, 100)
 	insertRequest(t, db, day, "ses_1", "openai", "gpt", 1, "low")
 	insertRequest(t, db, day, "ses_1", "openai", "gpt", 2, "high")
 
@@ -404,15 +406,57 @@ func TestAggregateSession(t *testing.T) {
 		t.Fatalf("got %d rows, want 2", len(rows))
 	}
 
+	// ses_2 has later activity, so it sorts first with LatestAtMs desc
 	first := rows[0]
-	if first.SessionID != "ses_1" {
-		t.Fatalf("unexpected session: %s", first.SessionID)
+	if first.SessionID != "ses_2" {
+		t.Fatalf("unexpected first session: %s", first.SessionID)
 	}
-	if first.InputTokens != 100 || first.TotalTokens != 136 {
-		t.Fatalf("unexpected tokens: %+v", first)
+	if first.InputTokens != 200 || first.TotalTokens != 258 {
+		t.Fatalf("unexpected first tokens: %+v", first)
 	}
-	if first.ThinkingLevels != "low,high" {
-		t.Fatalf("unexpected thinking levels: %s", first.ThinkingLevels)
+	if first.ThroughputTokens != 200 || first.DurationMs != 2000 {
+		t.Fatalf("unexpected first tps aggregates: %+v", first)
+	}
+	if first.TpsMean != 100.0 {
+		t.Fatalf("unexpected first tps mean: %f", first.TpsMean)
+	}
+	if first.TpsMedian != 100.0 {
+		t.Fatalf("unexpected first tps median: %f", first.TpsMedian)
+	}
+	if first.ThinkingLevels != "" {
+		t.Fatalf("unexpected first thinking levels: %s", first.ThinkingLevels)
+	}
+	if first.Requests != 0 || first.Retries != 0 {
+		t.Fatalf("unexpected first requests: %+v", first)
+	}
+	if first.LatestAtMs != later {
+		t.Fatalf("unexpected first latest at ms: %d, want %d", first.LatestAtMs, later)
+	}
+
+	second := rows[1]
+	if second.SessionID != "ses_1" {
+		t.Fatalf("unexpected second session: %s", second.SessionID)
+	}
+	if second.InputTokens != 100 || second.TotalTokens != 136 {
+		t.Fatalf("unexpected second tokens: %+v", second)
+	}
+	if second.ThroughputTokens != 100 || second.DurationMs != 1000 {
+		t.Fatalf("unexpected second tps aggregates: %+v", second)
+	}
+	if second.TpsMean != 100.0 {
+		t.Fatalf("unexpected second tps mean: %f", second.TpsMean)
+	}
+	if second.TpsMedian != 100.0 {
+		t.Fatalf("unexpected second tps median: %f", second.TpsMedian)
+	}
+	if second.ThinkingLevels != "low,high" {
+		t.Fatalf("unexpected second thinking levels: %s", second.ThinkingLevels)
+	}
+	if second.Requests != 1 || second.Retries != 1 {
+		t.Fatalf("unexpected second requests: %+v", second)
+	}
+	if second.LatestAtMs != day {
+		t.Fatalf("unexpected second latest at ms: %d, want %d", second.LatestAtMs, day)
 	}
 }
 

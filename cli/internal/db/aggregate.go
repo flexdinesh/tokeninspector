@@ -38,6 +38,7 @@ type Row struct {
 	Requests         int64
 	Retries          int64
 	ThinkingLevels   string
+	LatestAtMs       int64
 }
 
 type rowKey struct {
@@ -102,7 +103,7 @@ func scanKey(row *Row, g GroupBy) rowKey {
 func scanTokenEventRow(rows *sql.Rows, g GroupBy) (*Row, error) {
 	var day, provider, model string
 	var hour, sessionID, harness string
-	var input, output, reasoning, cacheRead, cacheWrite, total int64
+	var input, output, reasoning, cacheRead, cacheWrite, total, latestAtMs int64
 
 	var scanArgs []any
 	switch g {
@@ -113,7 +114,7 @@ func scanTokenEventRow(rows *sql.Rows, g GroupBy) (*Row, error) {
 	default:
 		scanArgs = []any{&day, &provider, &model, &harness}
 	}
-	scanArgs = append(scanArgs, &input, &output, &reasoning, &cacheRead, &cacheWrite, &total)
+	scanArgs = append(scanArgs, &input, &output, &reasoning, &cacheRead, &cacheWrite, &total, &latestAtMs)
 
 	if err := rows.Scan(scanArgs...); err != nil {
 		return nil, err
@@ -124,13 +125,14 @@ func scanTokenEventRow(rows *sql.Rows, g GroupBy) (*Row, error) {
 		InputTokens: input, OutputTokens: output,
 		ReasoningTokens: reasoning, CacheReadTokens: cacheRead,
 		CacheWriteTokens: cacheWrite, TotalTokens: total,
+		LatestAtMs: latestAtMs,
 	}, nil
 }
 
 func scanTpsRow(rows *sql.Rows, g GroupBy) (*Row, error) {
 	var day, provider, model string
 	var hour, sessionID, harness string
-	var throughput, duration int64
+	var throughput, duration, latestAtMs int64
 	var mean, median float64
 
 	var scanArgs []any
@@ -142,7 +144,7 @@ func scanTpsRow(rows *sql.Rows, g GroupBy) (*Row, error) {
 	default:
 		scanArgs = []any{&day, &provider, &model, &harness}
 	}
-	scanArgs = append(scanArgs, &throughput, &duration, &mean, &median)
+	scanArgs = append(scanArgs, &throughput, &duration, &mean, &median, &latestAtMs)
 
 	if err := rows.Scan(scanArgs...); err != nil {
 		return nil, err
@@ -152,13 +154,14 @@ func scanTpsRow(rows *sql.Rows, g GroupBy) (*Row, error) {
 		Provider: provider, Model: model,
 		ThroughputTokens: throughput, DurationMs: duration,
 		TpsMean: mean, TpsMedian: median,
+		LatestAtMs: latestAtMs,
 	}, nil
 }
 
 func scanRequestRow(rows *sql.Rows, g GroupBy) (*Row, error) {
 	var day, provider, model string
 	var hour, sessionID, harness string
-	var requests, retries int64
+	var requests, retries, latestAtMs int64
 	var thinking sql.NullString
 
 	var scanArgs []any
@@ -170,7 +173,7 @@ func scanRequestRow(rows *sql.Rows, g GroupBy) (*Row, error) {
 	default:
 		scanArgs = []any{&day, &provider, &model, &harness}
 	}
-	scanArgs = append(scanArgs, &requests, &retries, &thinking)
+	scanArgs = append(scanArgs, &requests, &retries, &thinking, &latestAtMs)
 
 	if err := rows.Scan(scanArgs...); err != nil {
 		return nil, err
@@ -180,6 +183,7 @@ func scanRequestRow(rows *sql.Rows, g GroupBy) (*Row, error) {
 		Provider: provider, Model: model,
 		Requests: requests, Retries: retries,
 		ThinkingLevels: thinking.String,
+		LatestAtMs: latestAtMs,
 	}, nil
 }
 
@@ -212,6 +216,9 @@ func mergeRow(result map[rowKey]*Row, r *Row, g GroupBy) {
 		} else {
 			existing.ThinkingLevels = r.ThinkingLevels
 		}
+	}
+	if r.LatestAtMs > existing.LatestAtMs {
+		existing.LatestAtMs = r.LatestAtMs
 	}
 }
 
@@ -262,7 +269,8 @@ func queryTokenEvents(ctx context.Context, db *sql.DB, f Filter, g GroupBy, tabl
 			SUM(%s) as reasoning_tokens,
 			SUM(%s) as cache_read_tokens,
 			SUM(%s) as cache_write_tokens,
-			SUM(%s) as total_tokens
+			SUM(%s) as total_tokens,
+			MAX(%s) as latest_at_ms
 		FROM %s
 		%s
 		GROUP BY %s
@@ -270,6 +278,7 @@ func queryTokenEvents(ctx context.Context, db *sql.DB, f Filter, g GroupBy, tabl
 		groupAliases(g, harness),
 		ColInputTokens, ColOutputTokens, ColReasoningTokens,
 		ColCacheReadTokens, ColCacheWriteTokens, ColTotalTokens,
+		ColRecordedAtMs,
 		table, whereClause, groupByAliases(g),
 	)
 
@@ -321,6 +330,7 @@ func queryTpsSamples(ctx context.Context, db *sql.DB, f Filter, g GroupBy, table
 				%s as total_tokens,
 				%s as duration_ms,
 				%s as tps,
+				%s as recorded_at_ms,
 				ROW_NUMBER() OVER (
 					PARTITION BY %s
 					ORDER BY %s
@@ -335,11 +345,13 @@ func queryTpsSamples(ctx context.Context, db *sql.DB, f Filter, g GroupBy, table
 			SUM(total_tokens) as throughput_tokens,
 			SUM(duration_ms) as duration_ms,
 			AVG(tps) as tps_mean,
-			AVG(CASE WHEN rn IN ((cnt+1)/2, (cnt+2)/2) THEN tps END) as tps_median
+			AVG(CASE WHEN rn IN ((cnt+1)/2, (cnt+2)/2) THEN tps END) as tps_median,
+			MAX(recorded_at_ms) as latest_at_ms
 		FROM ranked
 		GROUP BY %s
 	`,
 		groupAliases(g, harness), ColTpsTotalTokens, ColDurationMs, ColTokensPerSecond,
+		ColRecordedAtMs,
 		partitionBy(g), ColTokensPerSecond, partitionBy(g),
 		table, whereClause,
 		groupByAliases(g), groupByAliases(g),
@@ -396,12 +408,14 @@ func queryLLMRequests(ctx context.Context, db *sql.DB, f Filter, g GroupBy, tabl
 	query := fmt.Sprintf(`
 		SELECT %s,
 			SUM(CASE WHEN %s = 1 THEN 1 ELSE 0 END) as requests,
-			SUM(CASE WHEN %s > 1 THEN 1 ELSE 0 END) as retries%s
+			SUM(CASE WHEN %s > 1 THEN 1 ELSE 0 END) as retries%s,
+			MAX(%s) as latest_at_ms
 		FROM %s
 		%s
 		GROUP BY %s
 	`,
 		groupAliases(g, harness), ColAttemptIndex, ColAttemptIndex, thinkingSelect,
+		ColRecordedAtMs,
 		table, whereClause, groupByAliases(g),
 	)
 
@@ -482,6 +496,11 @@ func Aggregate(ctx context.Context, db *sql.DB, f Filter, g GroupBy) ([]Row, err
 		}
 		if rows[i].Hour != rows[j].Hour {
 			return rows[i].Hour > rows[j].Hour
+		}
+		if g == GroupByDaySession {
+			if rows[i].LatestAtMs != rows[j].LatestAtMs {
+				return rows[i].LatestAtMs > rows[j].LatestAtMs
+			}
 		}
 		if rows[i].SessionID != rows[j].SessionID {
 			return rows[i].SessionID < rows[j].SessionID

@@ -228,7 +228,7 @@ Runs as a Pi coding-agent extension. **One extension collects all data**: tokens
 
 ### Query Flow (`RunInteractive`)
 
-1. Parse flags (`--db-path`, `--day`, `--week`, `--month`, `--group-by`, filters).
+1. Parse flags (`--db-path`, `--day`, `--week`, `--month`, filters).
 2. Validate `--db-path` exists and is a file.
 3. Validate exactly one period flag.
 4. Compute period start:
@@ -236,10 +236,8 @@ Runs as a Pi coding-agent extension. **One extension collects all data**: tokens
    - `--week`: today 00:00 minus 6 days
    - `--month`: first day of current month 00:00 local time
 5. Open DB read-only.
-6. Load rows asynchronously.
-7. Apply optional filters in memory (session-id, provider, model, filter-day).
-8. Aggregate rows.
-9. Render an ASCII table in the active tab.
+6. Load and aggregate rows asynchronously with filters pushed into SQL WHERE clauses.
+7. Render an ASCII table in the active tab.
 
 ### Aggregation
 
@@ -249,7 +247,7 @@ Aggregation is SQL-side for performance. The CLI queries both `oc_*` and `pi_*` 
 - **TPS samples**: window CTE for median, `AVG` for mean, `SUM(total_tokens) / SUM(duration_ms)` for avg, grouped by day/hour/session + provider + model + harness.
 - **LLM requests**: `SUM(CASE WHEN attempt_index = 1 THEN 1)` for requests, `SUM(CASE WHEN attempt_index > 1 THEN 1)` for retries, grouped by day/hour/session + provider + model + harness.
 
-The `harness` column is a literal (`'oc'` or `'pi'`) selected in the query and included in the group key. Sort order is `harness asc`, then existing order.
+The `harness` column is a literal (`'oc'` or `'pi'`) selected in the query and included in the group key. Final sort order is defined per grouping mode in the table above.
 
 ### Tabs
 
@@ -265,9 +263,9 @@ The interactive TUI has three tabs. Only columns relevant to the active tab are 
 
 | Mode | Group Key | Sort Order |
 |------|-----------|------------|
-| `day` (default) | day, provider, model, harness | harness asc, day desc, provider asc, model asc |
-| `hour` (`--group-by=hour`) | day, hour, provider, model, harness | harness asc, day desc, hour desc, provider asc, model asc |
-| `session` (`--group-by=session`) | day, session_id, provider, model, harness | harness asc, day desc, session_id asc, provider asc, model asc |
+| `session` (default) | day, session_id, provider, model, harness | harness asc, day desc, MAX(recorded_at_ms) desc, session_id asc, provider asc, model asc |
+| `day` | day, provider, model, harness | harness asc, day desc, provider asc, model asc |
+| `hour` | day, hour, provider, model, harness | harness asc, day desc, hour desc, provider asc, model asc |
 
 ### Rendering
 
