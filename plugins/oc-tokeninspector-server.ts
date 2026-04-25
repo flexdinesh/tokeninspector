@@ -133,31 +133,59 @@ function attemptKey(input: { sessionID: string; message: { id?: string }; provid
   return [input.sessionID, knownValue(input.message.id), knownValue(input.provider.id), knownValue(input.model.id)].join("\u0000")
 }
 
-export const OcTokenInspectorServer: Plugin = async (input) => {
-  const storage = await createRequestStorage(dbPath(), retentionDays())
+export const OcTokenInspectorServer: Plugin = async () => {
+  let storage: RequestStorage | undefined
+  let storageInitPromise: Promise<RequestStorage | undefined> | undefined
+  let storageInitFailed = false
   const attemptsByKey: Record<string, number> = {}
   const thinkingLevelByKey: Record<string, string> = {}
+
+  async function getStorage(): Promise<RequestStorage | undefined> {
+    if (storage) return storage
+    if (storageInitFailed) return undefined
+    if (storageInitPromise) return storageInitPromise
+
+    storageInitPromise = createRequestStorage(dbPath(), retentionDays())
+      .then((s) => {
+        storage = s
+        return s
+      })
+      .catch((err) => {
+        storageInitFailed = true
+        console.error("oc-tokeninspector-server: db init failed, request tracking disabled:", err)
+        return undefined
+      })
+
+    return storageInitPromise
+  }
 
   return {
     "chat.params": async (chatInput, output) => {
       thinkingLevelByKey[attemptKey(chatInput)] = thinkingLevelFromOptions(output.options)
     },
     "chat.headers": async (chatInput) => {
+      const s = await getStorage()
+      if (!s) return
+
       const key = attemptKey(chatInput)
       const attemptIndex = (attemptsByKey[key] ?? 0) + 1
       attemptsByKey[key] = attemptIndex
 
       const recordedAtMs = Date.now()
-      storage.insert({
-        recordedAt: new Date(recordedAtMs).toISOString(),
-        recordedAtMs,
-        sessionID: chatInput.sessionID,
-        messageID: knownValue(chatInput.message.id),
-        provider: knownValue(chatInput.provider.id),
-        model: knownValue(chatInput.model.id),
-        attemptIndex,
-        thinkingLevel: thinkingLevelByKey[key] ?? UNKNOWN_VALUE,
-      })
+      try {
+        s.insert({
+          recordedAt: new Date(recordedAtMs).toISOString(),
+          recordedAtMs,
+          sessionID: chatInput.sessionID,
+          messageID: knownValue(chatInput.message.id),
+          provider: knownValue(chatInput.provider.id),
+          model: knownValue(chatInput.model.id),
+          attemptIndex,
+          thinkingLevel: thinkingLevelByKey[key] ?? UNKNOWN_VALUE,
+        })
+      } catch (err) {
+        console.error("oc-tokeninspector-server: insert failed:", err)
+      }
     },
     event: async ({ event }) => {
       if (event.type !== "session.idle" && event.type !== "session.deleted") return

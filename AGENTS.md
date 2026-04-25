@@ -14,6 +14,8 @@ Full architecture, schema contract, event flow, and invariants are in [`docs/des
 - **`session_id` is required** for every durable row. Never allow token data without it.
 - **Prefer real token data** over estimated stream deltas. `message.part.delta` is live UI only.
 - **Missing provider/model → `unknown`**. Never drop rows for missing metadata.
+- **Write for maintainability**. Do not use magic numbers in calculations for quick fixes that violate code discipline.
+- **Propose refactoring**. When you see an opportunity to refactor to strongly adhere to guidelines and quality, suggest it to the user.
 
 ## Change Checklist
 

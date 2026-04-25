@@ -45,8 +45,14 @@ async function createTokenStorage(dbPath: string, retentionDays: number): Promis
   mkdirSync(dirname(dbPath), { recursive: true })
 
   const db = new Database(dbPath)
+  db.exec("PRAGMA busy_timeout = 5000")
   const schemaSql = await Bun.file(new URL("../schema/schema.sql", import.meta.url)).text()
   applySchema(db, schemaSql)
+  try {
+    db.exec("PRAGMA wal_checkpoint(PASSIVE)")
+  } catch {
+    // PASSIVE can fail if another writer holds the lock; safe to ignore
+  }
 
   const insertEvent = db.prepare(`
     INSERT OR IGNORE INTO oc_token_events (
@@ -227,13 +233,25 @@ async function createTokenStorage(dbPath: string, retentionDays: number): Promis
   }
 }
 
+const WORKER_INIT_TIMEOUT_MS = 10_000
+
 let storage: TokenStorage | undefined
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`timed out after ${ms}ms`)), ms)
+    promise.then(
+      (val) => { clearTimeout(timer); resolve(val) },
+      (err) => { clearTimeout(timer); reject(err) },
+    )
+  })
+}
 
 self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
   try {
     const message = event.data
     if (message.type === "init") {
-      storage = await createTokenStorage(message.dbPath, message.retentionDays)
+      storage = await withTimeout(createTokenStorage(message.dbPath, message.retentionDays), WORKER_INIT_TIMEOUT_MS)
       post({ type: "ready" })
       return
     }

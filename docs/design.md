@@ -39,6 +39,10 @@ TPS (tokens per second) is a first-class project metric. Do not remove persisted
 
 Plugin DB writes must stay lightweight; the TUI should never feel blocked by analytics. The CLI is free to run expensive aggregates because it only reads.
 
+**Top priority**: plugin initialization must never block OpenCode startup. DB open and schema migration happen lazily on first write (server plugin) or inside a worker thread (TUI plugin). If the DB is locked by another process, the plugin degrades gracefully rather than hanging OpenCode.
+
+**TUI worker defensiveness**: the writer thread times out DB init after 10 s, runs a passive WAL checkpoint after migration to prevent unbounded WAL growth, and the main thread only flushes rows once the worker signals `ready`. If init fails, rows are dropped in-memory rather than queued forever.
+
 ## Data Model
 
 `schema/schema.sql` is the single source of truth for table and column definitions.
@@ -153,6 +157,7 @@ Registers three event handlers:
 
 Runs as an OpenCode server plugin.
 
+- **Initialization is lazy**: DB open and schema migration are deferred to the first `chat.headers` event. If init fails (e.g. DB locked), the plugin logs to stderr and disables request tracking for that session; OpenCode startup is never blocked.
 - **`chat.params`**: captures `thinking_level` from known params/options shapes before request headers are built.
 - **`chat.headers`**: writes one `oc_llm_requests` row per invocation. Attempts are tracked in memory by `session_id:message_id:provider:model`.
 - `attempt_index == 1` contributes to `requests`. `attempt_index > 1` contributes to `retries`.
@@ -244,6 +249,7 @@ Filtering currently happens in memory after the period query. If the DB grows la
 
 ### Must Never Change
 
+- **Plugin init must never block OpenCode**. DB open and schema migration must be lazy (server) or inside a worker thread (TUI). Failures degrade gracefully.
 - `session_id` is required for every durable row.
 - TPS tables, columns, and metrics (`tps avg`, `tps mean`, `tps median`) must remain.
 - Plugin DB writes must stay lightweight.

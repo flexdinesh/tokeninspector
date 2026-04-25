@@ -47,6 +47,28 @@ func TestRenderTableHourlyTokens(t *testing.T) {
 		cacheReadTokens:  "50",
 		cacheWriteTokens: "3",
 		totalTokens:      "394",
+	}, {
+		day:              "2026-04-24",
+		hour:             "12:00",
+		provider:         "anthropic",
+		model:            "claude",
+		inputTokens:      "200",
+		outputTokens:     "20",
+		reasoningTokens:  "5",
+		cacheReadTokens:  "10",
+		cacheWriteTokens: "1",
+		totalTokens:      "236",
+	}, {
+		day:              "2026-04-24",
+		hour:             "13:00",
+		provider:         "openai",
+		model:            "gpt",
+		inputTokens:      "100",
+		outputTokens:     "10",
+		reasoningTokens:  "0",
+		cacheReadTokens:  "0",
+		cacheWriteTokens: "0",
+		totalTokens:      "110",
 	}}, groupByHour, tabTokens)
 
 	golden := filepath.Join("testdata", "render_hourly_tokens.txt")

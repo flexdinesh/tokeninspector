@@ -62,7 +62,10 @@ func (m interactiveModel) maxVisibleRows() int {
 	if m.height <= 0 {
 		return 0
 	}
-	return max(1, (m.height-8)/2)
+	if m.groupBy == groupByHour {
+		return max(1, (m.height-14)/3)
+	}
+	return max(1, (m.height-14)/2)
 }
 
 func clampScroll(offset int, totalRows int, visible int) int {
@@ -238,7 +241,11 @@ func (m interactiveModel) View() string {
 		return fmt.Sprintf("Error: %v\n", m.err)
 	}
 
-	title := titleStyle.Render(fmt.Sprintf("Token usage · %s", m.period))
+	if m.showPopup {
+		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, m.renderPopup())
+	}
+
+	title := titleStyle.Render(fmt.Sprintf("Token Inspector %s", m.period))
 
 	var tabs []string
 	for i := tabTokens; i <= tabRequests; i++ {
@@ -250,11 +257,21 @@ func (m interactiveModel) View() string {
 		}
 	}
 	tabBar := lipgloss.JoinHorizontal(lipgloss.Top, tabs...)
+	tabBox := sectionBorderStyle.Width(m.width - 4).Render(tabBar)
 
-	hint := hintStyle.Render("tab/shift+tab switch · ↑/↓ j/k scroll · g grouping · q quit")
+	visible := m.maxVisibleRows()
+	hintText := "tab/shift+tab switch · ↑/↓ j/k scroll · g grouping · q quit"
+	if visible > 0 && len(m.rows) > visible {
+		end := m.scrollOffset + visible
+		if end > len(m.rows) {
+			end = len(m.rows)
+		}
+		hintText += fmt.Sprintf("  ·  %d-%d of %d", m.scrollOffset+1, end, len(m.rows))
+	}
+	hint := hintStyle.Render(hintText)
+	hintBox := sectionBorderStyle.Width(m.width - 4).Render(hint)
 
 	visibleRows := m.rows
-	visible := m.maxVisibleRows()
 	if visible > 0 && len(m.rows) > visible {
 		end := m.scrollOffset + visible
 		if end > len(m.rows) {
@@ -263,21 +280,10 @@ func (m interactiveModel) View() string {
 		visibleRows = m.rows[m.scrollOffset:end]
 	}
 
-	body := renderTableWithWidth(visibleRows, m.groupBy, m.activeTab, m.width)
+	body := renderTableWithWidth(visibleRows, m.groupBy, m.activeTab, m.width-2)
 
-	if visible > 0 && len(m.rows) > visible {
-		indicator := hintStyle.Render(fmt.Sprintf("%d-%d of %d", m.scrollOffset+1, m.scrollOffset+len(visibleRows), len(m.rows)))
-		body = lipgloss.JoinVertical(lipgloss.Left, body, indicator)
-	}
-
-	content := lipgloss.JoinVertical(lipgloss.Left, title, tabBar, "", hint, "", body)
-
-	if m.showPopup {
-		popup := m.renderPopup()
-		content = lipgloss.JoinVertical(lipgloss.Left, content, "", popup)
-	}
-
-	return content + "\n"
+	content := lipgloss.JoinVertical(lipgloss.Left, title, tabBox, body, hintBox)
+	return outerBorderStyle.Width(m.width - 2).Render(content)
 }
 
 func (m interactiveModel) renderPopup() string {
@@ -309,7 +315,7 @@ func RunInteractive(ctx context.Context, args []string, stdout io.Writer, stderr
 		groupBy:     groupBySession,
 		activeTab:   tabTokens,
 		popupCursor: 0,
-	}, tea.WithInput(os.Stdin), tea.WithOutput(stdout)).Run()
+	}, tea.WithAltScreen(), tea.WithInput(os.Stdin), tea.WithOutput(stdout)).Run()
 	return err
 }
 
