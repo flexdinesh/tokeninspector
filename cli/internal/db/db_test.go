@@ -382,6 +382,47 @@ func TestAggregateHourly(t *testing.T) {
 	}
 }
 
+func TestAggregateHourlyInterleaved(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	hour13 := time.Date(2026, 4, 24, 13, 0, 0, 0, time.Local).UnixMilli()
+	hour12 := time.Date(2026, 4, 24, 12, 0, 0, 0, time.Local).UnixMilli()
+
+	// OC data at 13:00
+	insertTokenEvent(t, db, hour13, "ses_1", "openai", "gpt", 100, 10, 5, 20, 1, 136)
+	// Pi data at 13:00
+	insertPiTokenEvent(t, db, hour13, "ses_2", "anthropic", "claude", 200, 20, 10, 40, 2, 272)
+	// OC data at 12:00
+	insertTokenEvent(t, db, hour12, "ses_3", "openai", "gpt", 50, 5, 1, 10, 0, 66)
+	// Pi data at 12:00
+	insertPiTokenEvent(t, db, hour12, "ses_4", "anthropic", "claude", 80, 8, 2, 16, 1, 107)
+
+	rows, err := Aggregate(context.Background(), db, Filter{
+		Start: time.Date(2026, 4, 24, 0, 0, 0, 0, time.Local),
+	}, GroupByDayHour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 4 {
+		t.Fatalf("got %d rows, want 4", len(rows))
+	}
+
+	// Should be interleaved by hour: 13:00 first (OC, then Pi), then 12:00 (OC, then Pi)
+	if rows[0].Hour != "13:00" || rows[0].Harness != "oc" || rows[0].InputTokens != 100 {
+		t.Fatalf("unexpected row 0: %+v", rows[0])
+	}
+	if rows[1].Hour != "13:00" || rows[1].Harness != "pi" || rows[1].InputTokens != 200 {
+		t.Fatalf("unexpected row 1: %+v", rows[1])
+	}
+	if rows[2].Hour != "12:00" || rows[2].Harness != "oc" || rows[2].InputTokens != 50 {
+		t.Fatalf("unexpected row 2: %+v", rows[2])
+	}
+	if rows[3].Hour != "12:00" || rows[3].Harness != "pi" || rows[3].InputTokens != 80 {
+		t.Fatalf("unexpected row 3: %+v", rows[3])
+	}
+}
+
 func TestAggregateSession(t *testing.T) {
 	db := newTestDB(t)
 	defer db.Close()
@@ -486,7 +527,7 @@ func TestAggregateCrossHarness(t *testing.T) {
 		t.Fatalf("got %d rows, want 2", len(rows))
 	}
 
-	// Sorted by harness asc, then day desc
+	// Sorted by day desc, then harness asc
 	first := rows[0]
 	if first.Harness != "oc" {
 		t.Fatalf("unexpected harness: %s", first.Harness)

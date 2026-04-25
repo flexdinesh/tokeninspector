@@ -264,8 +264,8 @@ The interactive TUI has three tabs. Only columns relevant to the active tab are 
 | Mode | Group Key | Sort Order |
 |------|-----------|------------|
 | `session` (default) | day, session_id, provider, model, harness | harness asc, day desc, MAX(recorded_at_ms) desc, session_id asc, provider asc, model asc |
-| `day` | day, provider, model, harness | harness asc, day desc, provider asc, model asc |
-| `hour` | day, hour, provider, model, harness | harness asc, day desc, hour desc, provider asc, model asc |
+| `day` | day, provider, model, harness | day desc, harness asc, provider asc, model asc |
+| `hour` | day, hour, provider, model, harness | day desc, hour desc, harness asc, provider asc, model asc |
 
 ### Rendering
 

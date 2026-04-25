@@ -488,27 +488,50 @@ func Aggregate(ctx context.Context, db *sql.DB, f Filter, g GroupBy) ([]Row, err
 	}
 
 	sort.Slice(rows, func(i, j int) bool {
-		if rows[i].Harness != rows[j].Harness {
-			return rows[i].Harness < rows[j].Harness
-		}
-		if rows[i].Day != rows[j].Day {
-			return rows[i].Day > rows[j].Day
-		}
-		if rows[i].Hour != rows[j].Hour {
-			return rows[i].Hour > rows[j].Hour
-		}
-		if g == GroupByDaySession {
+		switch g {
+		case GroupByDayHour:
+			if rows[i].Day != rows[j].Day {
+				return rows[i].Day > rows[j].Day
+			}
+			if rows[i].Hour != rows[j].Hour {
+				return rows[i].Hour > rows[j].Hour
+			}
+			if rows[i].Harness != rows[j].Harness {
+				return rows[i].Harness < rows[j].Harness
+			}
+			if rows[i].Provider != rows[j].Provider {
+				return rows[i].Provider < rows[j].Provider
+			}
+			return rows[i].Model < rows[j].Model
+		case GroupByDaySession:
+			if rows[i].Harness != rows[j].Harness {
+				return rows[i].Harness < rows[j].Harness
+			}
+			if rows[i].Day != rows[j].Day {
+				return rows[i].Day > rows[j].Day
+			}
 			if rows[i].LatestAtMs != rows[j].LatestAtMs {
 				return rows[i].LatestAtMs > rows[j].LatestAtMs
 			}
+			if rows[i].SessionID != rows[j].SessionID {
+				return rows[i].SessionID < rows[j].SessionID
+			}
+			if rows[i].Provider != rows[j].Provider {
+				return rows[i].Provider < rows[j].Provider
+			}
+			return rows[i].Model < rows[j].Model
+		default: // GroupByDay
+			if rows[i].Day != rows[j].Day {
+				return rows[i].Day > rows[j].Day
+			}
+			if rows[i].Harness != rows[j].Harness {
+				return rows[i].Harness < rows[j].Harness
+			}
+			if rows[i].Provider != rows[j].Provider {
+				return rows[i].Provider < rows[j].Provider
+			}
+			return rows[i].Model < rows[j].Model
 		}
-		if rows[i].SessionID != rows[j].SessionID {
-			return rows[i].SessionID < rows[j].SessionID
-		}
-		if rows[i].Provider != rows[j].Provider {
-			return rows[i].Provider < rows[j].Provider
-		}
-		return rows[i].Model < rows[j].Model
 	})
 
 	return rows, nil
