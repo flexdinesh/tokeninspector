@@ -87,6 +87,19 @@ Do **not** add `plugins/shared/oc-tokeninspector-writer.ts` or `plugins/shared/w
 
 Default DB path: `~/.local/state/opencode/oc-tps.sqlite`
 
+## Install Pi Extension
+
+Pi extensions auto-discover from `~/.pi/agent/extensions/`. Copy or symlink the extension directory there and install its dependency:
+
+```sh
+mkdir -p ~/.pi/agent/extensions
+ln -s "$PWD/plugins/pi" ~/.pi/agent/extensions/pi-tokeninspector
+cd ~/.pi/agent/extensions/pi-tokeninspector
+npm install
+```
+
+The Pi extension writes to the same DB as the OpenCode plugins (`~/.local/state/opencode/oc-tps.sqlite`) but stores data in the `pi_*` table family. The CLI reads both `oc_*` and `pi_*` tables and shows a `harness` column (`oc` or `pi`) to distinguish sources.
+
 ## CLI Usage
 
 ```sh
