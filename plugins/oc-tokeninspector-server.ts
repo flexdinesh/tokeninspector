@@ -120,6 +120,7 @@ function createRequestStorage(path: string, retention: number): RequestStorage {
   db.exec(
     "CREATE INDEX IF NOT EXISTS oc_llm_requests_provider_model_time_idx ON oc_llm_requests (provider, model, recorded_at_ms)",
   )
+  db.exec("PRAGMA user_version = 1")
 
   const insertRequest = db.prepare(`
     INSERT INTO oc_llm_requests (

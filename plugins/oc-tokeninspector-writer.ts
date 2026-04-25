@@ -117,6 +117,7 @@ function createTokenStorage(dbPath: string, retentionDays: number): TokenStorage
   db.exec(
     "CREATE INDEX IF NOT EXISTS oc_token_events_provider_model_time_idx ON oc_token_events (provider, model, recorded_at_ms)",
   )
+  db.exec("PRAGMA user_version = 1")
   db.exec(`
     CREATE TABLE IF NOT EXISTS oc_tps_samples (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -501,9 +501,9 @@ If plugin schema changes, update:
 plugin SQLite schema and migrations/reset logic
 plugin OpenCode event handling
 plugin row shape and token semantics
-CLI sample struct
-CLI querySamples SELECT list and Scan order
-CLI aggregation and rendering
+CLI internal/db schema constants
+CLI internal/db Events/Aggregate SELECT lists and Scan order
+CLI internal/cli rendering
 tests that create oc_token_events and oc_tps_samples
 README.md
 docs/how-it-works.md
@@ -512,11 +512,11 @@ docs/how-it-works.md
 If adding more grouping modes, update:
 
 ```text
-groupByMode constants
-groupByFlag.Set
-aggregateSamples switch
-renderTable header/row building
-sorting and table alignment tests
+internal/cli groupByMode constants
+internal/cli groupByFlag.Set
+internal/db GroupBy enum and aggregate SQL
+internal/cli column list and renderer
+tests for new GroupBy mode
 README.md
 docs/how-it-works.md
 ```
@@ -533,7 +533,7 @@ Run CLI tests and build from `cli/`:
 
 ```sh
 go test ./...
-go build -o tokeninspector-cli .
+go build -o tokeninspector-cli ./cmd/tokeninspector-cli
 ```
 
 Smoke check against the real DB from `cli/`:
