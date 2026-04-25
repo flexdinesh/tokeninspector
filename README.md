@@ -6,7 +6,10 @@ See [`docs/design.md`](docs/design.md) for full architecture, schema contract, e
 
 ## Code Organization
 
-- `plugins/` — TypeScript OpenCode plugins (TUI + server), shared types, and writer client
+- `plugins/opencode-tui/` — OpenCode TUI plugin
+- `plugins/opencode-server/` — OpenCode server plugin
+- `plugins/shared/` — Shared types, schema migration, writer client, writer worker
+- `plugins/pi/` — Pi extension
 - `cli/` — Go CLI (`tokeninspector-cli`) that queries the SQLite DB
 - `schema/schema.sql` — single source of truth for SQLite schema
 - `scripts/check-schema.ts` — cross-language schema contract validator
@@ -25,9 +28,9 @@ See [`docs/design.md`](docs/design.md) for full architecture, schema contract, e
 ### Plugin smoke builds
 
 ```sh
-bun build plugins/oc-tokeninspector.tsx --target=bun --outfile=/tmp/oc-tokeninspector-check.js --external "solid-js" --external "@opentui/solid" --external "@opentui/solid/jsx-dev-runtime"
-bun build plugins/oc-tokeninspector-writer.ts --target=bun --outfile=/tmp/oc-tokeninspector-writer-check.js
-bun build plugins/oc-tokeninspector-server.ts --target=bun --outfile=/tmp/oc-tokeninspector-server-check.js --external "@opencode-ai/plugin"
+bun build plugins/opencode-tui/oc-tokeninspector.tsx --target=bun --outfile=/tmp/oc-tokeninspector-check.js --external "solid-js" --external "@opentui/solid" --external "@opentui/solid/jsx-dev-runtime"
+bun build plugins/shared/oc-tokeninspector-writer.ts --target=bun --outfile=/tmp/oc-tokeninspector-writer-check.js
+bun build plugins/opencode-server/oc-tokeninspector-server.ts --target=bun --outfile=/tmp/oc-tokeninspector-server-check.js --external "@opencode-ai/plugin"
 ```
 
 ### CLI verification
@@ -53,7 +56,7 @@ OpenCode auto-discovers server plugins in `~/.config/opencode/plugins/`. Symlink
 
 ```sh
 mkdir -p ~/.config/opencode/plugins
-ln -s "$PWD/plugins/oc-tokeninspector-server.ts" ~/.config/opencode/plugins/
+ln -s "$PWD/plugins/opencode-server/oc-tokeninspector-server.ts" ~/.config/opencode/plugins/
 ```
 
 Then **remove** any `tokeninspector` entry from `opencode.jsonc`.
@@ -66,7 +69,7 @@ TUI plugins do **not** auto-discover. Add the TUI plugin to your per-OS `tui.jso
 ```json
 {
   "plugin": [
-    "/Users/dineshpandiyan/workspace/tokeninspector/plugins/oc-tokeninspector.tsx"
+    "/Users/dineshpandiyan/workspace/tokeninspector/plugins/opencode-tui/oc-tokeninspector.tsx"
   ]
 }
 ```
@@ -75,12 +78,12 @@ TUI plugins do **not** auto-discover. Add the TUI plugin to your per-OS `tui.jso
 ```json
 {
   "plugin": [
-    "/home/dee/workspace/tokeninspector/plugins/oc-tokeninspector.tsx"
+    "/home/dee/workspace/tokeninspector/plugins/opencode-tui/oc-tokeninspector.tsx"
   ]
 }
 ```
 
-Do **not** add `plugins/oc-tokeninspector-writer.ts` or `plugins/writer-client.ts` to config. The writer is a worker module loaded internally by the server plugin.
+Do **not** add `plugins/shared/oc-tokeninspector-writer.ts` or `plugins/shared/writer-client.ts` to config. The writer is a worker module loaded internally by the server plugin.
 
 Default DB path: `~/.local/state/opencode/oc-tps.sqlite`
 

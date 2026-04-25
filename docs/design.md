@@ -139,7 +139,7 @@ Identical schema to `oc_llm_requests`. `attempt_index` is always `1` because Pi 
 
 ### Schema Contract
 
-Plugin writers auto-migrate the DB using `plugins/schema-migrate.ts`, which reads `schema/schema.sql` at init time. The migration parses `CREATE TABLE IF NOT EXISTS` and `ALTER TABLE ADD COLUMN` for missing columns.
+Plugin writers auto-migrate the DB using `plugins/shared/schema-migrate.ts`, which reads `schema/schema.sql` at init time. The migration parses `CREATE TABLE IF NOT EXISTS` and `ALTER TABLE ADD COLUMN` for missing columns.
 
 Cross-language contract is validated by:
 - `scripts/check-schema.ts` — parses SQL, Go constants, and TS types
@@ -207,7 +207,7 @@ Runs as an OpenCode server plugin and is the **sole writer** of OpenCode token d
 
 Limitations: counts request attempts, not confirmed HTTP success. Does not count tool network calls, MCP traffic, auth/OAuth, provider metadata lookups, plugin-owned fetches, install/update checks, or local TUI/server API calls.
 
-### Pi Extension (`pi-extension/index.ts`)
+### Pi Extension (`plugins/pi/index.ts`)
 
 Runs as a Pi coding-agent extension. **One extension collects all data**: tokens, TPS, and requests (unlike OpenCode which splits this across TUI and server plugins).
 
@@ -316,12 +316,14 @@ Filtering currently happens in memory after the period query. If the DB grows la
 
 | Directory / File | Role |
 |-----------------|------|
-| `plugins/oc-tokeninspector.tsx` | TUI plugin entry point; live display, DB queries |
-| `plugins/oc-tokeninspector-writer.ts` | Bun worker; SQLite writes, schema migration, pruning |
-| `plugins/writer-client.ts` | Shared worker client; used by both TUI and server plugins |
-| `plugins/oc-tokeninspector-server.ts` | Server plugin; durable collection, LLM request tracking |
-| `plugins/types.ts` | Shared TypeScript types (plugin + worker + server) |
-| `plugins/schema-migrate.ts` | Auto-migration logic parsed from `schema/schema.sql` |
+| `plugins/opencode-tui/oc-tokeninspector.tsx` | TUI plugin entry point; live display, DB queries |
+| `plugins/opencode-server/oc-tokeninspector-server.ts` | Server plugin; durable collection, LLM request tracking |
+| `plugins/shared/oc-tokeninspector-writer.ts` | Bun worker; SQLite writes, schema migration, pruning |
+| `plugins/shared/writer-client.ts` | Shared worker client; used by both TUI and server plugins |
+| `plugins/shared/types.ts` | Shared TypeScript types (plugin + worker + server) |
+| `plugins/shared/schema-migrate.ts` | Auto-migration logic parsed from `schema/schema.sql` |
+| `plugins/pi/index.ts` | Pi extension entry point; event handlers, DB writes |
+| `plugins/pi/package.json` | Pi extension dependency manifest (`better-sqlite3`) |
 | `schema/schema.sql` | Single source of truth for SQLite schema |
 | `scripts/check-schema.ts` | Cross-language schema contract validator |
 | `cli/cmd/tokeninspector-cli/main.go` | CLI entry point |
@@ -334,8 +336,6 @@ Filtering currently happens in memory after the period query. If the DB grows la
 | `cli/internal/cli/table.go` | Bubbletea TUI model, key handling, tab switching |
 | `cli/internal/cli/render.go` | Table rendering, formatting, compact units |
 | `cli/internal/cli/render_test.go` | Golden file tests for rendered tables |
-| `pi-extension/index.ts` | Pi extension entry point; event handlers, DB writes |
-| `pi-extension/package.json` | Pi extension dependency manifest (`better-sqlite3`)
 
 ## Testing & Verification
 
@@ -348,10 +348,10 @@ bun run scripts/check-schema.ts
 ### TypeScript / Plugin Changes
 
 ```sh
-bun build plugins/oc-tokeninspector.tsx --target=bun --outfile=/tmp/oc-tokeninspector-check.js --external "solid-js" --external "@opentui/solid" --external "@opentui/solid/jsx-dev-runtime"
-bun build plugins/oc-tokeninspector-writer.ts --target=bun --outfile=/tmp/oc-tokeninspector-writer-check.js
-bun build plugins/oc-tokeninspector-server.ts --target=bun --outfile=/tmp/oc-tokeninspector-server-check.js --external "@opencode-ai/plugin"
-cd pi-extension && npx tsc --noEmit --module esnext --moduleResolution node --esModuleInterop --skipLibCheck index.ts
+bun build plugins/opencode-tui/oc-tokeninspector.tsx --target=bun --outfile=/tmp/oc-tokeninspector-check.js --external "solid-js" --external "@opentui/solid" --external "@opentui/solid/jsx-dev-runtime"
+bun build plugins/shared/oc-tokeninspector-writer.ts --target=bun --outfile=/tmp/oc-tokeninspector-writer-check.js
+bun build plugins/opencode-server/oc-tokeninspector-server.ts --target=bun --outfile=/tmp/oc-tokeninspector-server-check.js --external "@opencode-ai/plugin"
+cd plugins/pi && npx tsc --noEmit --module esnext --moduleResolution node --esModuleInterop --skipLibCheck index.ts
 ```
 
 ### Go / CLI Changes

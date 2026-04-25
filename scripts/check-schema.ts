@@ -4,7 +4,7 @@
 
 const SCHEMA_SQL_PATH = "/Users/dineshpandiyan/workspace/tokeninspector/schema/schema.sql";
 const SCHEMA_GO_PATH = "/Users/dineshpandiyan/workspace/tokeninspector/cli/internal/db/schema.go";
-const TS_TYPES_PATH = "/Users/dineshpandiyan/workspace/tokeninspector/plugins/types.ts";
+const TS_TYPES_PATH = "/Users/dineshpandiyan/workspace/tokeninspector/plugins/shared/types.ts";
 
 const SQL_KEYWORDS = new Set([
   "PRIMARY", "KEY", "AUTOINCREMENT", "NOT", "NULL", "DEFAULT", "CHECK", "UNIQUE",
