@@ -1,12 +1,12 @@
 # tokeninspector
 
-Local OpenCode token usage tools. The TUI plugin writes token/TPS data to SQLite; the Go CLI reads it back as aggregate tables.
+Local OpenCode token usage tools. The server plugin writes token/TPS/request data to SQLite via a worker thread; the TUI plugin queries the DB for live display; the Go CLI reads aggregate tables.
 
 See [`docs/design.md`](docs/design.md) for full architecture, schema contract, event flow, and invariants.
 
 ## Code Organization
 
-- `plugins/` — TypeScript OpenCode plugins (TUI + server) and shared types
+- `plugins/` — TypeScript OpenCode plugins (TUI + server), shared types, and writer client
 - `cli/` — Go CLI (`tokeninspector-cli`) that queries the SQLite DB
 - `schema/schema.sql` — single source of truth for SQLite schema
 - `scripts/check-schema.ts` — cross-language schema contract validator
@@ -47,19 +47,23 @@ cd cli
 
 ## Install OpenCode Plugins
 
-Add the server plugin to `opencode.jsonc`:
+### Server plugin (auto-discovered)
 
-```jsonc
-{
-  "plugin": [
-    "/Users/dineshpandiyan/workspace/tokeninspector/plugins/oc-tokeninspector-server.ts"
-  ]
-}
+OpenCode auto-discovers server plugins in `~/.config/opencode/plugins/`. Symlink the server plugin there:
+
+```sh
+mkdir -p ~/.config/opencode/plugins
+ln -s "$PWD/plugins/oc-tokeninspector-server.ts" ~/.config/opencode/plugins/
 ```
 
-Add the TUI plugin to `tui.json`:
+Then **remove** any `tokeninspector` entry from `opencode.jsonc`.
 
-```jsonc
+### TUI plugin (explicit config)
+
+TUI plugins do **not** auto-discover. Add the TUI plugin to your per-OS `tui.json`:
+
+**macOS** (`~/.config/opencode/tui.json`):
+```json
 {
   "plugin": [
     "/Users/dineshpandiyan/workspace/tokeninspector/plugins/oc-tokeninspector.tsx"
@@ -67,7 +71,16 @@ Add the TUI plugin to `tui.json`:
 }
 ```
 
-Do **not** add `plugins/oc-tokeninspector-writer.ts` to config. It is a worker module loaded by the TUI plugin.
+**Linux** (`~/.config/opencode/tui.json`):
+```json
+{
+  "plugin": [
+    "/home/dee/workspace/tokeninspector/plugins/oc-tokeninspector.tsx"
+  ]
+}
+```
+
+Do **not** add `plugins/oc-tokeninspector-writer.ts` or `plugins/writer-client.ts` to config. The writer is a worker module loaded internally by the server plugin.
 
 Default DB path: `~/.local/state/opencode/oc-tps.sqlite`
 

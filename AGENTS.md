@@ -1,6 +1,6 @@
 # tokeninspector — Agent Guide
 
-Track OpenCode token usage locally. TUI plugin writes to SQLite; Go CLI reads aggregate tables.
+Track OpenCode token usage locally. Server plugin writes to SQLite via worker thread; TUI plugin reads for live display; Go CLI reads aggregate tables.
 
 Full architecture, schema contract, event flow, and invariants are in [`docs/design.md`](docs/design.md). Read it before any non-trivial change.
 

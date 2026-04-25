@@ -228,9 +228,12 @@ async function main() {
     oc_token_events: "TokenEventRow",
     oc_tps_samples: "TpsSampleRow",
     oc_llm_requests: "RequestRow",
+    pi_token_events: "PiTokenEventRow",
+    pi_tps_samples: "PiTpsSampleRow",
+    pi_llm_requests: "PiRequestRow",
   };
 
-  const rowTypesToCheck = ["TokenEventRow", "TpsSampleRow", "RequestRow", "MessageInfo"];
+  const rowTypesToCheck = ["TokenEventRow", "TpsSampleRow", "RequestRow", "MessageInfo", "PiTokenEventRow", "PiTpsSampleRow", "PiRequestRow"];
 
   // Forward: every TS field from row types must map to an SQL column
   for (const typeName of rowTypesToCheck) {

@@ -19,6 +19,7 @@ const (
 
 // Row is an aggregated result row with raw numeric fields.
 type Row struct {
+	Harness          string
 	Day              string
 	Hour             string
 	SessionID        string
@@ -40,6 +41,7 @@ type Row struct {
 }
 
 type rowKey struct {
+	harness   string
 	day       string
 	hour      string
 	sessionID string
@@ -52,25 +54,26 @@ const (
 	exprHour = "strftime('%H:00', recorded_at_ms/1000, 'unixepoch', 'localtime')"
 )
 
-func groupAliases(g GroupBy) string {
+func groupAliases(g GroupBy, harness string) string {
+	h := fmt.Sprintf("'%s' as harness", harness)
 	switch g {
 	case GroupByDayHour:
-		return fmt.Sprintf("%s as day, %s as hour, %s, %s", exprDay, exprHour, ColProvider, ColModel)
+		return fmt.Sprintf("%s as day, %s as hour, %s, %s, %s", exprDay, exprHour, ColProvider, ColModel, h)
 	case GroupByDaySession:
-		return fmt.Sprintf("%s as day, %s, %s, %s", exprDay, ColSessionID, ColProvider, ColModel)
+		return fmt.Sprintf("%s as day, %s, %s, %s, %s", exprDay, ColSessionID, ColProvider, ColModel, h)
 	default:
-		return fmt.Sprintf("%s as day, %s, %s", exprDay, ColProvider, ColModel)
+		return fmt.Sprintf("%s as day, %s, %s, %s", exprDay, ColProvider, ColModel, h)
 	}
 }
 
 func groupByAliases(g GroupBy) string {
 	switch g {
 	case GroupByDayHour:
-		return "day, hour, provider, model"
+		return "day, hour, provider, model, harness"
 	case GroupByDaySession:
-		return "day, session_id, provider, model"
+		return "day, session_id, provider, model, harness"
 	default:
-		return "day, provider, model"
+		return "day, provider, model, harness"
 	}
 }
 
@@ -88,27 +91,27 @@ func partitionBy(g GroupBy) string {
 func scanKey(row *Row, g GroupBy) rowKey {
 	switch g {
 	case GroupByDayHour:
-		return rowKey{day: row.Day, hour: row.Hour, provider: row.Provider, model: row.Model}
+		return rowKey{harness: row.Harness, day: row.Day, hour: row.Hour, provider: row.Provider, model: row.Model}
 	case GroupByDaySession:
-		return rowKey{day: row.Day, sessionID: row.SessionID, provider: row.Provider, model: row.Model}
+		return rowKey{harness: row.Harness, day: row.Day, sessionID: row.SessionID, provider: row.Provider, model: row.Model}
 	default:
-		return rowKey{day: row.Day, provider: row.Provider, model: row.Model}
+		return rowKey{harness: row.Harness, day: row.Day, provider: row.Provider, model: row.Model}
 	}
 }
 
 func scanTokenEventRow(rows *sql.Rows, g GroupBy) (*Row, error) {
 	var day, provider, model string
-	var hour, sessionID string
+	var hour, sessionID, harness string
 	var input, output, reasoning, cacheRead, cacheWrite, total int64
 
 	var scanArgs []any
 	switch g {
 	case GroupByDayHour:
-		scanArgs = []any{&day, &hour, &provider, &model}
+		scanArgs = []any{&day, &hour, &provider, &model, &harness}
 	case GroupByDaySession:
-		scanArgs = []any{&day, &sessionID, &provider, &model}
+		scanArgs = []any{&day, &sessionID, &provider, &model, &harness}
 	default:
-		scanArgs = []any{&day, &provider, &model}
+		scanArgs = []any{&day, &provider, &model, &harness}
 	}
 	scanArgs = append(scanArgs, &input, &output, &reasoning, &cacheRead, &cacheWrite, &total)
 
@@ -116,7 +119,7 @@ func scanTokenEventRow(rows *sql.Rows, g GroupBy) (*Row, error) {
 		return nil, err
 	}
 	return &Row{
-		Day: day, Hour: hour, SessionID: sessionID,
+		Harness: harness, Day: day, Hour: hour, SessionID: sessionID,
 		Provider: provider, Model: model,
 		InputTokens: input, OutputTokens: output,
 		ReasoningTokens: reasoning, CacheReadTokens: cacheRead,
@@ -126,18 +129,18 @@ func scanTokenEventRow(rows *sql.Rows, g GroupBy) (*Row, error) {
 
 func scanTpsRow(rows *sql.Rows, g GroupBy) (*Row, error) {
 	var day, provider, model string
-	var hour, sessionID string
+	var hour, sessionID, harness string
 	var throughput, duration int64
 	var mean, median float64
 
 	var scanArgs []any
 	switch g {
 	case GroupByDayHour:
-		scanArgs = []any{&day, &hour, &provider, &model}
+		scanArgs = []any{&day, &hour, &provider, &model, &harness}
 	case GroupByDaySession:
-		scanArgs = []any{&day, &sessionID, &provider, &model}
+		scanArgs = []any{&day, &sessionID, &provider, &model, &harness}
 	default:
-		scanArgs = []any{&day, &provider, &model}
+		scanArgs = []any{&day, &provider, &model, &harness}
 	}
 	scanArgs = append(scanArgs, &throughput, &duration, &mean, &median)
 
@@ -145,7 +148,7 @@ func scanTpsRow(rows *sql.Rows, g GroupBy) (*Row, error) {
 		return nil, err
 	}
 	return &Row{
-		Day: day, Hour: hour, SessionID: sessionID,
+		Harness: harness, Day: day, Hour: hour, SessionID: sessionID,
 		Provider: provider, Model: model,
 		ThroughputTokens: throughput, DurationMs: duration,
 		TpsMean: mean, TpsMedian: median,
@@ -154,18 +157,18 @@ func scanTpsRow(rows *sql.Rows, g GroupBy) (*Row, error) {
 
 func scanRequestRow(rows *sql.Rows, g GroupBy) (*Row, error) {
 	var day, provider, model string
-	var hour, sessionID string
+	var hour, sessionID, harness string
 	var requests, retries int64
 	var thinking sql.NullString
 
 	var scanArgs []any
 	switch g {
 	case GroupByDayHour:
-		scanArgs = []any{&day, &hour, &provider, &model}
+		scanArgs = []any{&day, &hour, &provider, &model, &harness}
 	case GroupByDaySession:
-		scanArgs = []any{&day, &sessionID, &provider, &model}
+		scanArgs = []any{&day, &sessionID, &provider, &model, &harness}
 	default:
-		scanArgs = []any{&day, &provider, &model}
+		scanArgs = []any{&day, &provider, &model, &harness}
 	}
 	scanArgs = append(scanArgs, &requests, &retries, &thinking)
 
@@ -173,7 +176,7 @@ func scanRequestRow(rows *sql.Rows, g GroupBy) (*Row, error) {
 		return nil, err
 	}
 	return &Row{
-		Day: day, Hour: hour, SessionID: sessionID,
+		Harness: harness, Day: day, Hour: hour, SessionID: sessionID,
 		Provider: provider, Model: model,
 		Requests: requests, Retries: retries,
 		ThinkingLevels: thinking.String,
@@ -248,8 +251,8 @@ func buildWhereClause(f Filter) (string, []any) {
 	return "WHERE " + strings.Join(where, " AND "), args
 }
 
-// aggregateTokenEvents queries oc_token_events with SQL-side SUM grouping.
-func aggregateTokenEvents(ctx context.Context, db *sql.DB, f Filter, g GroupBy) (map[rowKey]*Row, error) {
+// queryTokenEvents aggregates token events from a single table.
+func queryTokenEvents(ctx context.Context, db *sql.DB, f Filter, g GroupBy, table, harness string, result map[rowKey]*Row) error {
 	whereClause, args := buildWhereClause(f)
 
 	query := fmt.Sprintf(`
@@ -264,39 +267,51 @@ func aggregateTokenEvents(ctx context.Context, db *sql.DB, f Filter, g GroupBy) 
 		%s
 		GROUP BY %s
 	`,
-		groupAliases(g),
+		groupAliases(g, harness),
 		ColInputTokens, ColOutputTokens, ColReasoningTokens,
 		ColCacheReadTokens, ColCacheWriteTokens, ColTotalTokens,
-		TableTokenEvents, whereClause, groupByAliases(g),
+		table, whereClause, groupByAliases(g),
 	)
 
 	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer rows.Close()
 
-	result := make(map[rowKey]*Row)
 	for rows.Next() {
 		r, err := scanTokenEventRow(rows, g)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		mergeRow(result, r, g)
 	}
-	if err := rows.Err(); err != nil {
+	return rows.Err()
+}
+
+// aggregateTokenEvents queries oc_token_events and pi_token_events with SQL-side SUM grouping.
+func aggregateTokenEvents(ctx context.Context, db *sql.DB, f Filter, g GroupBy) (map[rowKey]*Row, error) {
+	result := make(map[rowKey]*Row)
+
+	if err := queryTokenEvents(ctx, db, f, g, TableTokenEvents, "oc", result); err != nil {
 		return nil, err
 	}
+
+	exists, err := tableExists(ctx, db, TablePiTokenEvents)
+	if err != nil {
+		return nil, err
+	}
+	if exists {
+		if err := queryTokenEvents(ctx, db, f, g, TablePiTokenEvents, "pi", result); err != nil {
+			return nil, err
+		}
+	}
+
 	return result, nil
 }
 
-// aggregateTpsSamples queries oc_tps_samples with SQL-side GROUP BY and median via window CTE.
-func aggregateTpsSamples(ctx context.Context, db *sql.DB, f Filter, g GroupBy, result map[rowKey]*Row) error {
-	exists, err := tableExists(ctx, db, TableTpsSamples)
-	if err != nil || !exists {
-		return err
-	}
-
+// queryTpsSamples aggregates TPS samples from a single table.
+func queryTpsSamples(ctx context.Context, db *sql.DB, f Filter, g GroupBy, table, harness string, result map[rowKey]*Row) error {
 	whereClause, args := buildWhereClause(f)
 
 	query := fmt.Sprintf(`
@@ -324,9 +339,9 @@ func aggregateTpsSamples(ctx context.Context, db *sql.DB, f Filter, g GroupBy, r
 		FROM ranked
 		GROUP BY %s
 	`,
-		groupAliases(g), ColTpsTotalTokens, ColDurationMs, ColTokensPerSecond,
+		groupAliases(g, harness), ColTpsTotalTokens, ColDurationMs, ColTokensPerSecond,
 		partitionBy(g), ColTokensPerSecond, partitionBy(g),
-		TableTpsSamples, whereClause,
+		table, whereClause,
 		groupByAliases(g), groupByAliases(g),
 	)
 
@@ -346,13 +361,31 @@ func aggregateTpsSamples(ctx context.Context, db *sql.DB, f Filter, g GroupBy, r
 	return rows.Err()
 }
 
-// aggregateLLMRequests queries oc_llm_requests with SQL-side COUNT grouping.
-func aggregateLLMRequests(ctx context.Context, db *sql.DB, f Filter, g GroupBy, result map[rowKey]*Row) error {
-	exists, err := tableExists(ctx, db, TableLLMRequests)
+// aggregateTpsSamples queries oc_tps_samples and pi_tps_samples with SQL-side GROUP BY and median via window CTE.
+func aggregateTpsSamples(ctx context.Context, db *sql.DB, f Filter, g GroupBy, result map[rowKey]*Row) error {
+	exists, err := tableExists(ctx, db, TableTpsSamples)
 	if err != nil || !exists {
 		return err
 	}
+	if err := queryTpsSamples(ctx, db, f, g, TableTpsSamples, "oc", result); err != nil {
+		return err
+	}
 
+	exists, err = tableExists(ctx, db, TablePiTpsSamples)
+	if err != nil {
+		return err
+	}
+	if exists {
+		if err := queryTpsSamples(ctx, db, f, g, TablePiTpsSamples, "pi", result); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// queryLLMRequests aggregates LLM requests from a single table.
+func queryLLMRequests(ctx context.Context, db *sql.DB, f Filter, g GroupBy, table, harness string, result map[rowKey]*Row) error {
 	whereClause, args := buildWhereClause(f)
 
 	thinkingSelect := fmt.Sprintf(
@@ -368,8 +401,8 @@ func aggregateLLMRequests(ctx context.Context, db *sql.DB, f Filter, g GroupBy, 
 		%s
 		GROUP BY %s
 	`,
-		groupAliases(g), ColAttemptIndex, ColAttemptIndex, thinkingSelect,
-		TableLLMRequests, whereClause, groupByAliases(g),
+		groupAliases(g, harness), ColAttemptIndex, ColAttemptIndex, thinkingSelect,
+		table, whereClause, groupByAliases(g),
 	)
 
 	rows, err := db.QueryContext(ctx, query, args...)
@@ -388,6 +421,29 @@ func aggregateLLMRequests(ctx context.Context, db *sql.DB, f Filter, g GroupBy, 
 	return rows.Err()
 }
 
+// aggregateLLMRequests queries oc_llm_requests and pi_llm_requests with SQL-side COUNT grouping.
+func aggregateLLMRequests(ctx context.Context, db *sql.DB, f Filter, g GroupBy, result map[rowKey]*Row) error {
+	exists, err := tableExists(ctx, db, TableLLMRequests)
+	if err != nil || !exists {
+		return err
+	}
+	if err := queryLLMRequests(ctx, db, f, g, TableLLMRequests, "oc", result); err != nil {
+		return err
+	}
+
+	exists, err = tableExists(ctx, db, TablePiLLMRequests)
+	if err != nil {
+		return err
+	}
+	if exists {
+		if err := queryLLMRequests(ctx, db, f, g, TablePiLLMRequests, "pi", result); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // tableExists checks whether a table exists in sqlite_master.
 func tableExists(ctx context.Context, db *sql.DB, name string) (bool, error) {
 	var count int
@@ -397,7 +453,7 @@ func tableExists(ctx context.Context, db *sql.DB, name string) (bool, error) {
 	return count > 0, nil
 }
 
-// Aggregate queries all three tables with SQL-side GROUP BY and merges by group key.
+// Aggregate queries all three table families with SQL-side GROUP BY and merges by group key.
 func Aggregate(ctx context.Context, db *sql.DB, f Filter, g GroupBy) ([]Row, error) {
 	result, err := aggregateTokenEvents(ctx, db, f, g)
 	if err != nil {
@@ -418,6 +474,9 @@ func Aggregate(ctx context.Context, db *sql.DB, f Filter, g GroupBy) ([]Row, err
 	}
 
 	sort.Slice(rows, func(i, j int) bool {
+		if rows[i].Harness != rows[j].Harness {
+			return rows[i].Harness < rows[j].Harness
+		}
 		if rows[i].Day != rows[j].Day {
 			return rows[i].Day > rows[j].Day
 		}

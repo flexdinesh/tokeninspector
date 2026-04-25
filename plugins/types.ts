@@ -81,6 +81,11 @@ export type TokenStorageConfig = {
   retentionDays: number
 }
 
+export type WriterConfig = {
+  dbPath: string
+  retentionDays: number
+}
+
 export type MessageInfoUpdate = {
   messageID: string
   info: MessageInfo
@@ -97,6 +102,47 @@ export type WriterResponse = {
 }
 
 export type RequestRow = {
+  recordedAt: string
+  recordedAtMs: number
+  sessionID: string
+  messageID: string
+  provider: string
+  model: string
+  attemptIndex: number
+  thinkingLevel: string
+}
+
+export type PiTokenEventRow = {
+  recordedAt: string
+  recordedAtMs: number
+  sessionID: string
+  messageID: string
+  provider: string
+  model: string
+  inputTokens: number
+  outputTokens: number
+  reasoningTokens: number
+  cacheReadTokens: number
+  cacheWriteTokens: number
+  totalTokens: number
+}
+
+export type PiTpsSampleRow = {
+  recordedAt: string
+  recordedAtMs: number
+  sessionID: string
+  messageID: string
+  provider: string
+  model: string
+  outputTokens: number
+  reasoningTokens: number
+  totalTokens: number
+  durationMs: number
+  ttftMs: number
+  tokensPerSecond: number
+}
+
+export type PiRequestRow = {
   recordedAt: string
   recordedAtMs: number
   sessionID: string

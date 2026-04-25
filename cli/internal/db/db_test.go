@@ -85,6 +85,75 @@ func newTestDB(t *testing.T) *sql.DB {
 	)); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := db.Exec(fmt.Sprintf(`
+		CREATE TABLE %s (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			recorded_at TEXT NOT NULL,
+			%s INTEGER NOT NULL,
+			%s TEXT NOT NULL,
+			%s TEXT NOT NULL,
+			%s TEXT NOT NULL DEFAULT 'unknown',
+			%s TEXT NOT NULL DEFAULT 'unknown',
+			%s INTEGER NOT NULL,
+			%s INTEGER NOT NULL,
+			%s INTEGER NOT NULL,
+			%s INTEGER NOT NULL,
+			%s INTEGER NOT NULL,
+			%s INTEGER NOT NULL,
+			UNIQUE(%s, %s)
+		)
+	`,
+		TablePiTokenEvents,
+		ColRecordedAtMs, ColSessionID, ColMessageID, ColProvider, ColModel,
+		ColInputTokens, ColOutputTokens, ColReasoningTokens,
+		ColCacheReadTokens, ColCacheWriteTokens, ColTotalTokens,
+		ColSessionID, ColMessageID,
+	)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(fmt.Sprintf(`
+		CREATE TABLE %s (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			recorded_at TEXT NOT NULL,
+			%s INTEGER NOT NULL,
+			%s TEXT NOT NULL,
+			%s TEXT NOT NULL UNIQUE,
+			%s TEXT NOT NULL DEFAULT 'unknown',
+			%s TEXT NOT NULL DEFAULT 'unknown',
+			%s INTEGER NOT NULL,
+			%s INTEGER NOT NULL,
+			%s INTEGER NOT NULL,
+			%s INTEGER NOT NULL,
+			%s INTEGER NOT NULL,
+			%s REAL NOT NULL
+		)
+	`,
+		TablePiTpsSamples,
+		ColRecordedAtMs, ColSessionID, ColMessageID, ColProvider, ColModel,
+		ColOutputTokens, ColReasoningTokens, ColTotalTokens,
+		ColDurationMs, "ttft_ms", ColTokensPerSecond,
+	)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(fmt.Sprintf(`
+		CREATE TABLE %s (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			recorded_at TEXT NOT NULL,
+			%s INTEGER NOT NULL,
+			%s TEXT NOT NULL,
+			%s TEXT NOT NULL,
+			%s TEXT NOT NULL DEFAULT 'unknown',
+			%s TEXT NOT NULL DEFAULT 'unknown',
+			%s INTEGER NOT NULL,
+			%s TEXT NOT NULL DEFAULT 'unknown'
+		)
+	`,
+		TablePiLLMRequests,
+		ColRecordedAtMs, ColSessionID, ColMessageID, ColProvider, ColModel,
+		ColAttemptIndex, ColThinkingLevel,
+	)); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := db.Exec(fmt.Sprintf("PRAGMA user_version = %d", SupportedSchemaVersion)); err != nil {
 		t.Fatal(err)
 	}
@@ -134,6 +203,50 @@ func insertRequest(t *testing.T, db *sql.DB, recordedAtMs int64, sessionID, prov
 	_, err := db.Exec(fmt.Sprintf(
 		"INSERT INTO %s (recorded_at, %s, %s, %s, %s, %s, %s, %s) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
 		TableLLMRequests,
+		ColRecordedAtMs, ColSessionID, ColMessageID, ColProvider, ColModel,
+		ColAttemptIndex, ColThinkingLevel,
+	), recordedAt, recordedAtMs, sessionID, nextMsgID(), provider, model, attemptIndex, thinkingLevel)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func insertPiTokenEvent(t *testing.T, db *sql.DB, recordedAtMs int64, sessionID, provider, model string, input, output, reasoning, cacheRead, cacheWrite, total int64) {
+	t.Helper()
+	recordedAt := time.UnixMilli(recordedAtMs).UTC().Format(time.RFC3339)
+	_, err := db.Exec(fmt.Sprintf(
+		"INSERT INTO %s (recorded_at, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		TablePiTokenEvents,
+		ColRecordedAtMs, ColSessionID, ColMessageID, ColProvider, ColModel,
+		ColInputTokens, ColOutputTokens, ColReasoningTokens,
+		ColCacheReadTokens, ColCacheWriteTokens, ColTotalTokens,
+	), recordedAt, recordedAtMs, sessionID, nextMsgID(), provider, model, input, output, reasoning, cacheRead, cacheWrite, total)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func insertPiTpsSample(t *testing.T, db *sql.DB, recordedAtMs int64, sessionID, provider, model string, totalTokens, durationMs int64, tokensPerSecond float64) {
+	t.Helper()
+	recordedAt := time.UnixMilli(recordedAtMs).UTC().Format(time.RFC3339)
+	_, err := db.Exec(fmt.Sprintf(
+		"INSERT INTO %s (recorded_at, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		TablePiTpsSamples,
+		ColRecordedAtMs, ColSessionID, ColMessageID, ColProvider, ColModel,
+		ColOutputTokens, ColReasoningTokens, ColTotalTokens,
+		ColDurationMs, "ttft_ms", ColTokensPerSecond,
+	), recordedAt, recordedAtMs, sessionID, nextMsgID(), provider, model, 0, 0, totalTokens, durationMs, 0, tokensPerSecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func insertPiRequest(t *testing.T, db *sql.DB, recordedAtMs int64, sessionID, provider, model string, attemptIndex int64, thinkingLevel string) {
+	t.Helper()
+	recordedAt := time.UnixMilli(recordedAtMs).UTC().Format(time.RFC3339)
+	_, err := db.Exec(fmt.Sprintf(
+		"INSERT INTO %s (recorded_at, %s, %s, %s, %s, %s, %s, %s) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+		TablePiLLMRequests,
 		ColRecordedAtMs, ColSessionID, ColMessageID, ColProvider, ColModel,
 		ColAttemptIndex, ColThinkingLevel,
 	), recordedAt, recordedAtMs, sessionID, nextMsgID(), provider, model, attemptIndex, thinkingLevel)
@@ -300,6 +413,62 @@ func TestAggregateSession(t *testing.T) {
 	}
 	if first.ThinkingLevels != "low,high" {
 		t.Fatalf("unexpected thinking levels: %s", first.ThinkingLevels)
+	}
+}
+
+func TestAggregateCrossHarness(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	day := time.Date(2026, 4, 24, 12, 0, 0, 0, time.Local).UnixMilli()
+
+	// OpenCode data
+	insertTokenEvent(t, db, day, "ses_1", "openai", "gpt", 100, 10, 5, 20, 1, 136)
+	insertTpsSample(t, db, day, "ses_1", "openai", "gpt", 100, 1000, 100)
+	insertRequest(t, db, day, "ses_1", "openai", "gpt", 1, "low")
+
+	// Pi data
+	insertPiTokenEvent(t, db, day, "ses_1", "openai", "gpt", 200, 20, 10, 40, 2, 272)
+	insertPiTpsSample(t, db, day, "ses_1", "openai", "gpt", 200, 2000, 100)
+	insertPiRequest(t, db, day, "ses_1", "openai", "gpt", 1, "high")
+
+	rows, err := Aggregate(context.Background(), db, Filter{
+		Start: time.Date(2026, 4, 24, 0, 0, 0, 0, time.Local),
+	}, GroupByDay)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("got %d rows, want 2", len(rows))
+	}
+
+	// Sorted by harness asc, then day desc
+	first := rows[0]
+	if first.Harness != "oc" {
+		t.Fatalf("unexpected harness: %s", first.Harness)
+	}
+	if first.InputTokens != 100 || first.TotalTokens != 136 {
+		t.Fatalf("unexpected oc tokens: %+v", first)
+	}
+	if first.ThroughputTokens != 100 || first.DurationMs != 1000 {
+		t.Fatalf("unexpected oc tps: %+v", first)
+	}
+	if first.Requests != 1 || first.Retries != 0 {
+		t.Fatalf("unexpected oc requests: %+v", first)
+	}
+
+	second := rows[1]
+	if second.Harness != "pi" {
+		t.Fatalf("unexpected harness: %s", second.Harness)
+	}
+	if second.InputTokens != 200 || second.TotalTokens != 272 {
+		t.Fatalf("unexpected pi tokens: %+v", second)
+	}
+	if second.ThroughputTokens != 200 || second.DurationMs != 2000 {
+		t.Fatalf("unexpected pi tps: %+v", second)
+	}
+	if second.Requests != 1 || second.Retries != 0 {
+		t.Fatalf("unexpected pi requests: %+v", second)
 	}
 }
 

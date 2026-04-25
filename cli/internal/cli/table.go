@@ -354,6 +354,7 @@ func loadRows(ctx context.Context, options tableOptions, now time.Time, groupBy 
 	result := make([]renderRow, len(aggRows))
 	for i, r := range aggRows {
 		result[i] = renderRow{
+			harness:          r.Harness,
 			day:              r.Day,
 			hour:             r.Hour,
 			sessionID:        r.SessionID,

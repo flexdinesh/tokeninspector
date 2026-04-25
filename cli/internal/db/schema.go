@@ -1,9 +1,12 @@
 package db
 
 const (
-	TableTokenEvents = "oc_token_events"
-	TableTpsSamples  = "oc_tps_samples"
-	TableLLMRequests = "oc_llm_requests"
+	TableTokenEvents    = "oc_token_events"
+	TableTpsSamples     = "oc_tps_samples"
+	TableLLMRequests    = "oc_llm_requests"
+	TablePiTokenEvents  = "pi_token_events"
+	TablePiTpsSamples   = "pi_tps_samples"
+	TablePiLLMRequests  = "pi_llm_requests"
 )
 
 const (

@@ -48,6 +48,7 @@ func columnsForModeAndTab(g groupByMode, t tabMode) []column {
 		)
 	}
 	grouping = append(grouping,
+		column{name: "harness", field: "harness"},
 		column{name: "provider", field: "provider"},
 		column{name: "model", field: "model"},
 	)
@@ -79,6 +80,7 @@ func columnsForModeAndTab(g groupByMode, t tabMode) []column {
 }
 
 type renderRow struct {
+	harness          string
 	day              string
 	hour             string
 	sessionID        string
@@ -219,6 +221,8 @@ func renderTableWithWidth(rows []renderRow, g groupByMode, tab tabMode, width in
 		values := make([]string, len(cols))
 		for i, c := range cols {
 			switch c.field {
+			case "harness":
+				values[i] = row.harness
 			case "day":
 				values[i] = row.day
 			case "hour":

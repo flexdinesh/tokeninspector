@@ -9,6 +9,7 @@ import (
 
 func TestRenderTableDailyTokens(t *testing.T) {
 	output := renderTable([]renderRow{{
+		harness:          "oc",
 		day:              "2026-04-24",
 		provider:         "openai",
 		model:            "gpt",
@@ -37,6 +38,7 @@ func TestRenderTableDailyTokens(t *testing.T) {
 
 func TestRenderTableHourlyTokens(t *testing.T) {
 	output := renderTable([]renderRow{{
+		harness:          "oc",
 		day:              "2026-04-24",
 		hour:             "12:00",
 		provider:         "openai",
@@ -48,6 +50,7 @@ func TestRenderTableHourlyTokens(t *testing.T) {
 		cacheWriteTokens: "3",
 		totalTokens:      "394",
 	}, {
+		harness:          "oc",
 		day:              "2026-04-24",
 		hour:             "12:00",
 		provider:         "anthropic",
@@ -59,6 +62,7 @@ func TestRenderTableHourlyTokens(t *testing.T) {
 		cacheWriteTokens: "1",
 		totalTokens:      "236",
 	}, {
+		harness:          "oc",
 		day:              "2026-04-24",
 		hour:             "13:00",
 		provider:         "openai",
@@ -88,6 +92,7 @@ func TestRenderTableHourlyTokens(t *testing.T) {
 
 func TestRenderTableSessionTokens(t *testing.T) {
 	output := renderTable([]renderRow{{
+		harness:          "oc",
 		day:              "2026-04-24",
 		sessionID:        "session_1234567890",
 		thinkingLevels:   "low,high",
@@ -118,6 +123,7 @@ func TestRenderTableSessionTokens(t *testing.T) {
 
 func TestRenderTableDailyTPS(t *testing.T) {
 	output := renderTable([]renderRow{{
+		harness:   "oc",
 		day:       "2026-04-24",
 		provider:  "openai",
 		model:     "gpt",
@@ -143,6 +149,7 @@ func TestRenderTableDailyTPS(t *testing.T) {
 
 func TestRenderTableSessionRequests(t *testing.T) {
 	output := renderTable([]renderRow{{
+		harness:        "oc",
 		day:            "2026-04-24",
 		sessionID:      "session_1234567890",
 		thinkingLevels: "low,high",
