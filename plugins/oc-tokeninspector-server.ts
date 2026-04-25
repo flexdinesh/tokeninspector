@@ -2,27 +2,13 @@ import { mkdirSync } from "node:fs"
 import { dirname, isAbsolute, join } from "node:path"
 import { Database } from "bun:sqlite"
 import type { Plugin } from "@opencode-ai/plugin"
+import { applySchema } from "./schema-migrate.ts"
+import type { RequestRow, RequestStorage } from "./types.ts"
 
 const DEFAULT_DB_NAME = "oc-tps.sqlite"
 const DEFAULT_RETENTION_DAYS = 365
 const DAY_MS = 24 * 60 * 60 * 1000
 const UNKNOWN_VALUE = "unknown"
-
-type RequestRow = {
-  recordedAt: string
-  recordedAtMs: number
-  sessionID: string
-  messageID: string
-  provider: string
-  model: string
-  attemptIndex: number
-  thinkingLevel: string
-}
-
-type RequestStorage = {
-  insert: (row: RequestRow) => void
-  close: () => void
-}
 
 function knownValue(value: string | undefined) {
   const trimmed = value?.trim()
@@ -91,36 +77,12 @@ function retentionDays() {
   return Number.isFinite(parsed) ? parsed : DEFAULT_RETENTION_DAYS
 }
 
-function createRequestStorage(path: string, retention: number): RequestStorage {
+async function createRequestStorage(path: string, retention: number): Promise<RequestStorage> {
   mkdirSync(dirname(path), { recursive: true })
 
   const db = new Database(path)
-  db.exec("PRAGMA journal_mode = WAL")
-  db.exec("PRAGMA busy_timeout = 5000")
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS oc_llm_requests (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      recorded_at TEXT NOT NULL,
-      recorded_at_ms INTEGER NOT NULL,
-      session_id TEXT NOT NULL,
-      message_id TEXT NOT NULL,
-      provider TEXT NOT NULL DEFAULT 'unknown',
-      model TEXT NOT NULL DEFAULT 'unknown',
-      attempt_index INTEGER NOT NULL CHECK (attempt_index > 0),
-      thinking_level TEXT NOT NULL DEFAULT 'unknown'
-    )
-  `)
-  try {
-    db.exec("ALTER TABLE oc_llm_requests ADD COLUMN thinking_level TEXT NOT NULL DEFAULT 'unknown'")
-  } catch {
-    // Existing DBs already have the column.
-  }
-  db.exec("CREATE INDEX IF NOT EXISTS oc_llm_requests_recorded_at_ms_idx ON oc_llm_requests (recorded_at_ms)")
-  db.exec("CREATE INDEX IF NOT EXISTS oc_llm_requests_session_time_idx ON oc_llm_requests (session_id, recorded_at_ms)")
-  db.exec(
-    "CREATE INDEX IF NOT EXISTS oc_llm_requests_provider_model_time_idx ON oc_llm_requests (provider, model, recorded_at_ms)",
-  )
-  db.exec("PRAGMA user_version = 1")
+  const schemaSql = await Bun.file(new URL("../schema/schema.sql", import.meta.url)).text()
+  applySchema(db, schemaSql)
 
   const insertRequest = db.prepare(`
     INSERT INTO oc_llm_requests (
@@ -172,7 +134,7 @@ function attemptKey(input: { sessionID: string; message: { id?: string }; provid
 }
 
 export const OcTokenInspectorServer: Plugin = async (input) => {
-  const storage = createRequestStorage(dbPath(), retentionDays())
+  const storage = await createRequestStorage(dbPath(), retentionDays())
   const attemptsByKey: Record<string, number> = {}
   const thinkingLevelByKey: Record<string, string> = {}
 

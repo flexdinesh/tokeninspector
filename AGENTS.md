@@ -39,9 +39,21 @@ TPS is also a first-class project metric. Do not remove persisted TPS columns/ta
 - TPS `total_tokens` is separate: output + reasoning only, used as throughput numerator.
 - Avoid silently changing token semantics; tests should make the meaning obvious.
 
+## Schema Contract
+
+- `schema/schema.sql` is the single source of truth for table and column definitions.
+- Plugin writers auto-migrate DB using `plugins/schema-migrate.ts`, which reads `schema/schema.sql` at init time.
+- Cross-language contract is validated by `scripts/check-schema.ts` (parses SQL, Go constants, and TS types).
+- Run schema validation before any schema-related commit:
+
+```sh
+bun run scripts/check-schema.ts
+```
+
 ## Change Checklist
 
-- If schema changes, add migration/reset logic intentionally and update CLI schema assumptions.
+- If schema changes, update `schema/schema.sql` and run `bun run scripts/check-schema.ts`.
+- If schema changes, update `cli/internal/db/schema.go` constants so Go tests pass.
 - If plugin row shape or token semantics change, update CLI query structs, SQL, aggregation, rendering, tests, README, and `docs/how-it-works.md`.
 - If CLI query columns change, update `sample`, `querySamples`, scan order, aggregation, rendering, tests, README, and `docs/how-it-works.md`.
 - If grouping changes, update sorting and table alignment tests.

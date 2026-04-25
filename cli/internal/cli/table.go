@@ -12,51 +12,288 @@ import (
 	"tokeninspector-cli/internal/db"
 )
 
+type reloadMsg struct {
+	rows []renderRow
+	err  error
+}
+
 type interactiveModel struct {
-	rows    []renderRow
-	groupBy groupByMode
-	period  period
-	width   int
-	height  int
+	rows         []renderRow
+	groupBy      groupByMode
+	activeTab    tabMode
+	period       period
+	width        int
+	height       int
+	scrollOffset int
+	showPopup    bool
+	popupCursor  int
+	ctx          context.Context
+	options      tableOptions
+	now          time.Time
+	err          error
 }
 
-func (model interactiveModel) Init() tea.Cmd {
-	return nil
+var groupingOptions = []groupByMode{groupBySession, groupByNone, groupByHour}
+
+func (m interactiveModel) Init() tea.Cmd {
+	return m.reloadCmd()
 }
 
-func (model interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch next := msg.(type) {
+func (m interactiveModel) reloadCmd() tea.Cmd {
+	return func() tea.Msg {
+		rows, err := loadRows(m.ctx, m.options, m.now, m.groupBy)
+		if err != nil {
+			return reloadMsg{err: err}
+		}
+		return reloadMsg{rows: rows}
+	}
+}
+
+func popupIndexForGroupBy(g groupByMode) int {
+	for i, opt := range groupingOptions {
+		if opt == g {
+			return i
+		}
+	}
+	return 0
+}
+
+func (m interactiveModel) maxVisibleRows() int {
+	if m.height <= 0 {
+		return 0
+	}
+	return max(1, (m.height-8)/2)
+}
+
+func clampScroll(offset int, totalRows int, visible int) int {
+	if totalRows <= 0 || visible <= 0 {
+		return 0
+	}
+	maxOffset := totalRows - visible
+	if maxOffset < 0 {
+		return 0
+	}
+	if offset < 0 {
+		return 0
+	}
+	if offset > maxOffset {
+		return maxOffset
+	}
+	return offset
+}
+
+func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case reloadMsg:
+		if msg.err != nil {
+			m.err = msg.err
+			return m, nil
+		}
+		m.rows = msg.rows
+		m.scrollOffset = clampScroll(m.scrollOffset, len(m.rows), m.maxVisibleRows())
+		return m, nil
 	case tea.KeyMsg:
-		switch next.String() {
-		case "q", "ctrl+c":
-			return model, tea.Quit
+		if m.showPopup {
+			return m.handlePopupKey(msg)
+		}
+		switch msg.Type {
+		case tea.KeyTab:
+			m.activeTab++
+			if m.activeTab > tabRequests {
+				m.activeTab = tabTokens
+			}
+			return m, nil
+		case tea.KeyShiftTab:
+			m.activeTab--
+			if m.activeTab < 0 {
+				m.activeTab = tabRequests
+			}
+			return m, nil
+		case tea.KeyUp:
+			if m.scrollOffset > 0 {
+				m.scrollOffset--
+			}
+			return m, nil
+		case tea.KeyDown:
+			visible := m.maxVisibleRows()
+			m.scrollOffset = clampScroll(m.scrollOffset+1, len(m.rows), visible)
+			return m, nil
+		case tea.KeyCtrlC:
+			return m, tea.Quit
+		case tea.KeyRunes:
+			switch string(msg.Runes) {
+			case "q":
+				return m, tea.Quit
+			case "g":
+				m.showPopup = true
+				m.popupCursor = popupIndexForGroupBy(m.groupBy)
+				return m, nil
+			case "j":
+				visible := m.maxVisibleRows()
+				m.scrollOffset = clampScroll(m.scrollOffset+1, len(m.rows), visible)
+				return m, nil
+			case "k":
+				if m.scrollOffset > 0 {
+					m.scrollOffset--
+				}
+				return m, nil
+			}
 		}
 	case tea.WindowSizeMsg:
-		model.width = next.Width
-		model.height = next.Height
+		m.width = msg.Width
+		m.height = msg.Height
+		m.scrollOffset = clampScroll(m.scrollOffset, len(m.rows), m.maxVisibleRows())
 	}
-	return model, nil
+	return m, nil
 }
 
-func (model interactiveModel) View() string {
-	title := titleStyle.Render(fmt.Sprintf("Token usage · %s", model.period))
-	hint := hintStyle.Render("q quit")
-	body := renderTableWithWidth(model.rows, model.groupBy, model.width)
-	return lipgloss.JoinVertical(lipgloss.Left, title, hint, "", body) + "\n"
+func (m interactiveModel) handlePopupKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.Type {
+	case tea.KeyUp:
+		m.popupCursor--
+		if m.popupCursor < 0 {
+			m.popupCursor = len(groupingOptions) - 1
+		}
+		return m, nil
+	case tea.KeyDown:
+		m.popupCursor++
+		if m.popupCursor >= len(groupingOptions) {
+			m.popupCursor = 0
+		}
+		return m, nil
+	case tea.KeyEnter:
+		newGroupBy := groupingOptions[m.popupCursor]
+		m.showPopup = false
+		if newGroupBy != m.groupBy {
+			m.groupBy = newGroupBy
+			m.scrollOffset = 0
+			return m, m.reloadCmd()
+		}
+		return m, nil
+	case tea.KeyEsc:
+		m.showPopup = false
+		return m, nil
+	case tea.KeyRunes:
+		switch string(msg.Runes) {
+		case "q":
+			m.showPopup = false
+			return m, nil
+		case "j":
+			m.popupCursor++
+			if m.popupCursor >= len(groupingOptions) {
+				m.popupCursor = 0
+			}
+			return m, nil
+		case "k":
+			m.popupCursor--
+			if m.popupCursor < 0 {
+				m.popupCursor = len(groupingOptions) - 1
+			}
+			return m, nil
+		case " ":
+			m.popupCursor++
+			if m.popupCursor >= len(groupingOptions) {
+				m.popupCursor = 0
+			}
+			return m, nil
+		}
+	}
+	return m, nil
 }
 
-func RunTable(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer, now time.Time) error {
-	options, err := parseTableOptions(args, stderr, true, "")
-	if err != nil {
-		return err
+var (
+	activeTabStyle = lipgloss.NewStyle().
+				Bold(true).
+				Foreground(lipgloss.Color("230")).
+				Background(lipgloss.Color("63")).
+				Padding(0, 2)
+
+	inactiveTabStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("245")).
+				Padding(0, 2)
+
+	popupStyle = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("212")).
+			Padding(1, 2)
+
+	popupTitleStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("212"))
+	popupCursorStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("63"))
+	popupItemStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
+)
+
+func groupByLabel(g groupByMode) string {
+	switch g {
+	case groupBySession:
+		return "session"
+	case groupByHour:
+		return "hour"
+	default:
+		return "day"
+	}
+}
+
+func (m interactiveModel) View() string {
+	if m.err != nil {
+		return fmt.Sprintf("Error: %v\n", m.err)
 	}
 
-	rows, err := loadRows(ctx, options, now)
-	if err != nil {
-		return err
+	title := titleStyle.Render(fmt.Sprintf("Token usage · %s", m.period))
+
+	var tabs []string
+	for i := tabTokens; i <= tabRequests; i++ {
+		label := i.String()
+		if i == m.activeTab {
+			tabs = append(tabs, activeTabStyle.Render(label))
+		} else {
+			tabs = append(tabs, inactiveTabStyle.Render(label))
+		}
 	}
-	fmt.Fprint(stdout, renderTable(rows, options.groupBy))
-	return nil
+	tabBar := lipgloss.JoinHorizontal(lipgloss.Top, tabs...)
+
+	hint := hintStyle.Render("tab/shift+tab switch · ↑/↓ j/k scroll · g grouping · q quit")
+
+	visibleRows := m.rows
+	visible := m.maxVisibleRows()
+	if visible > 0 && len(m.rows) > visible {
+		end := m.scrollOffset + visible
+		if end > len(m.rows) {
+			end = len(m.rows)
+		}
+		visibleRows = m.rows[m.scrollOffset:end]
+	}
+
+	body := renderTableWithWidth(visibleRows, m.groupBy, m.activeTab, m.width)
+
+	if visible > 0 && len(m.rows) > visible {
+		indicator := hintStyle.Render(fmt.Sprintf("%d-%d of %d", m.scrollOffset+1, m.scrollOffset+len(visibleRows), len(m.rows)))
+		body = lipgloss.JoinVertical(lipgloss.Left, body, indicator)
+	}
+
+	content := lipgloss.JoinVertical(lipgloss.Left, title, tabBar, "", hint, "", body)
+
+	if m.showPopup {
+		popup := m.renderPopup()
+		content = lipgloss.JoinVertical(lipgloss.Left, content, "", popup)
+	}
+
+	return content + "\n"
+}
+
+func (m interactiveModel) renderPopup() string {
+	title := popupTitleStyle.Render("Select grouping")
+	var options []string
+	for i, opt := range groupingOptions {
+		cursor := "  "
+		style := popupItemStyle
+		if i == m.popupCursor {
+			cursor = "> "
+			style = popupCursorStyle
+		}
+		options = append(options, style.Render(cursor+groupByLabel(opt)))
+	}
+	body := lipgloss.JoinVertical(lipgloss.Left, options...)
+	return popupStyle.Render(lipgloss.JoinVertical(lipgloss.Left, title, "", body))
 }
 
 func RunInteractive(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer, now time.Time) error {
@@ -65,19 +302,18 @@ func RunInteractive(ctx context.Context, args []string, stdout io.Writer, stderr
 		return err
 	}
 
-	rows, err := loadRows(ctx, options, now)
-	if err != nil {
-		return err
-	}
 	_, err = tea.NewProgram(interactiveModel{
-		rows:    rows,
-		groupBy: options.groupBy,
-		period:  options.period,
+		ctx:         ctx,
+		options:     options,
+		now:         now,
+		groupBy:     groupBySession,
+		activeTab:   tabTokens,
+		popupCursor: 0,
 	}, tea.WithInput(os.Stdin), tea.WithOutput(stdout)).Run()
 	return err
 }
 
-func loadRows(ctx context.Context, options tableOptions, now time.Time) ([]renderRow, error) {
+func loadRows(ctx context.Context, options tableOptions, now time.Time, groupBy groupByMode) ([]renderRow, error) {
 	start := periodStart(now, options.period)
 
 	database, err := db.Open(options.dbPath)
@@ -95,7 +331,7 @@ func loadRows(ctx context.Context, options tableOptions, now time.Time) ([]rende
 	}
 
 	var g db.GroupBy
-	switch options.groupBy {
+	switch groupBy {
 	case groupByHour:
 		g = db.GroupByDayHour
 	case groupBySession:

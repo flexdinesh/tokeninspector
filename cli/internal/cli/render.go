@@ -9,70 +9,72 @@ import (
 	"github.com/charmbracelet/lipgloss/table"
 )
 
+type tabMode int
+
+const (
+	tabTokens tabMode = iota
+	tabTPS
+	tabRequests
+)
+
+func (t tabMode) String() string {
+	switch t {
+	case tabTokens:
+		return "tokens"
+	case tabTPS:
+		return "tps"
+	case tabRequests:
+		return "requests"
+	default:
+		return ""
+	}
+}
+
 type column struct {
 	name    string
 	field   string
 	numeric bool
 }
 
-func columnsForMode(g groupByMode) []column {
-	base := []column{
-		{name: "day", field: "day"},
-		{name: "provider", field: "provider"},
-		{name: "model", field: "model"},
-		{name: "tps avg", field: "tpsAvg", numeric: true},
-		{name: "tps mean", field: "tpsMean", numeric: true},
-		{name: "tps median", field: "tpsMedian", numeric: true},
-		{name: "input", field: "inputTokens", numeric: true},
-		{name: "output", field: "outputTokens", numeric: true},
-		{name: "reasoning", field: "reasoningTokens", numeric: true},
-		{name: "cache read", field: "cacheReadTokens", numeric: true},
-		{name: "cache write", field: "cacheWriteTokens", numeric: true},
-		{name: "total", field: "totalTokens", numeric: true},
-		{name: "requests", field: "requests", numeric: true},
-		{name: "retries", field: "retries", numeric: true},
-	}
-
+func columnsForModeAndTab(g groupByMode, t tabMode) []column {
+	grouping := []column{{name: "day", field: "day"}}
 	switch g {
 	case groupByHour:
-		return []column{
-			{name: "day", field: "day"},
-			{name: "hour", field: "hour"},
-			{name: "provider", field: "provider"},
-			{name: "model", field: "model"},
-			{name: "tps avg", field: "tpsAvg", numeric: true},
-			{name: "tps mean", field: "tpsMean", numeric: true},
-			{name: "tps median", field: "tpsMedian", numeric: true},
-			{name: "input", field: "inputTokens", numeric: true},
-			{name: "output", field: "outputTokens", numeric: true},
-			{name: "reasoning", field: "reasoningTokens", numeric: true},
-			{name: "cache read", field: "cacheReadTokens", numeric: true},
-			{name: "cache write", field: "cacheWriteTokens", numeric: true},
-			{name: "total", field: "totalTokens", numeric: true},
-			{name: "requests", field: "requests", numeric: true},
-			{name: "retries", field: "retries", numeric: true},
-		}
+		grouping = append(grouping, column{name: "hour", field: "hour"})
 	case groupBySession:
-		return []column{
-			{name: "day", field: "day"},
-			{name: "session id", field: "sessionID"},
-			{name: "thinking", field: "thinkingLevels"},
-			{name: "provider", field: "provider"},
-			{name: "model", field: "model"},
-			{name: "tps avg", field: "tpsAvg", numeric: true},
-			{name: "tps mean", field: "tpsMean", numeric: true},
-			{name: "tps median", field: "tpsMedian", numeric: true},
-			{name: "input", field: "inputTokens", numeric: true},
-			{name: "output", field: "outputTokens", numeric: true},
-			{name: "reasoning", field: "reasoningTokens", numeric: true},
-			{name: "cache read", field: "cacheReadTokens", numeric: true},
-			{name: "cache write", field: "cacheWriteTokens", numeric: true},
-			{name: "total", field: "totalTokens", numeric: true},
-			{name: "requests", field: "requests", numeric: true},
-			{name: "retries", field: "retries", numeric: true},
-		}
+		grouping = append(grouping,
+			column{name: "session id", field: "sessionID"},
+			column{name: "thinking", field: "thinkingLevels"},
+		)
+	}
+	grouping = append(grouping,
+		column{name: "provider", field: "provider"},
+		column{name: "model", field: "model"},
+	)
+
+	switch t {
+	case tabTokens:
+		return append(grouping,
+			column{name: "input", field: "inputTokens", numeric: true},
+			column{name: "output", field: "outputTokens", numeric: true},
+			column{name: "reasoning", field: "reasoningTokens", numeric: true},
+			column{name: "cache read", field: "cacheReadTokens", numeric: true},
+			column{name: "cache write", field: "cacheWriteTokens", numeric: true},
+			column{name: "total", field: "totalTokens", numeric: true},
+		)
+	case tabTPS:
+		return append(grouping,
+			column{name: "tps avg", field: "tpsAvg", numeric: true},
+			column{name: "tps mean", field: "tpsMean", numeric: true},
+			column{name: "tps median", field: "tpsMedian", numeric: true},
+		)
+	case tabRequests:
+		return append(grouping,
+			column{name: "requests", field: "requests", numeric: true},
+			column{name: "retries", field: "retries", numeric: true},
+		)
 	default:
-		return base
+		return grouping
 	}
 }
 
@@ -164,12 +166,12 @@ var (
 	borderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 )
 
-func renderTable(rows []renderRow, g groupByMode) string {
-	return renderTableWithWidth(rows, g, 0)
+func renderTable(rows []renderRow, g groupByMode, tab tabMode) string {
+	return renderTableWithWidth(rows, g, tab, 0)
 }
 
-func renderTableWithWidth(rows []renderRow, g groupByMode, width int) string {
-	cols := columnsForMode(g)
+func renderTableWithWidth(rows []renderRow, g groupByMode, tab tabMode, width int) string {
+	cols := columnsForModeAndTab(g, tab)
 
 	header := make([]string, len(cols))
 	for i, c := range cols {

@@ -7,6 +7,8 @@ const (
 )
 
 const (
+	ColID               = "id"
+	ColRecordedAt       = "recorded_at"
 	ColRecordedAtMs     = "recorded_at_ms"
 	ColSessionID        = "session_id"
 	ColMessageID        = "message_id"
@@ -21,6 +23,7 @@ const (
 	ColCacheWriteTokens = "cache_write_tokens"
 	ColTotalTokens      = "total_tokens"
 	ColDurationMs       = "duration_ms"
+	ColTtftMs           = "ttft_ms"
 	ColTokensPerSecond  = "tokens_per_second"
 	ColTpsTotalTokens   = "total_tokens"
 	ColAttemptIndex     = "attempt_index"

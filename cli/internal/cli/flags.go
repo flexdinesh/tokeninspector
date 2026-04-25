@@ -25,32 +25,6 @@ const (
 	groupBySession groupByMode = "session"
 )
 
-type groupByFlag struct {
-	value groupByMode
-	set   bool
-}
-
-func (value *groupByFlag) String() string {
-	return string(value.value)
-}
-
-func (value *groupByFlag) Set(input string) error {
-	if value.set {
-		return errors.New("only one --group-by can be passed")
-	}
-
-	switch input {
-	case string(groupByHour):
-		value.value = groupByHour
-	case string(groupBySession):
-		value.value = groupBySession
-	default:
-		return fmt.Errorf("invalid --group-by %q: expected hour or session", input)
-	}
-	value.set = true
-	return nil
-}
-
 type stringList []string
 
 func (values *stringList) String() string {
@@ -77,25 +51,22 @@ type filters struct {
 type tableOptions struct {
 	dbPath  string
 	period  period
-	groupBy groupByMode
 	filters filters
 }
 
 func parseTableOptions(args []string, stderr io.Writer, requirePeriod bool, defaultPeriod period) (tableOptions, error) {
-	flags := flag.NewFlagSet("table", flag.ContinueOnError)
+	flags := flag.NewFlagSet("tokeninspector-cli", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 
 	var dbPath string
 	var day bool
 	var week bool
 	var month bool
-	var groupBy groupByFlag
 	var queryFilters filters
 	flags.StringVar(&dbPath, "db-path", "", "path to tokeninspector sqlite db")
 	flags.BoolVar(&day, "day", false, "show today")
 	flags.BoolVar(&week, "week", false, "show current 7-day window")
 	flags.BoolVar(&month, "month", false, "show current calendar month")
-	flags.Var(&groupBy, "group-by", "group output by hour or session")
 	flags.Var(&queryFilters.sessionIDs, "session-id", "filter by session id; repeat or comma-separate")
 	flags.Var(&queryFilters.providers, "provider", "filter by provider; repeat or comma-separate")
 	flags.Var(&queryFilters.models, "model", "filter by model; repeat or comma-separate")
@@ -116,7 +87,7 @@ func parseTableOptions(args []string, stderr io.Writer, requirePeriod bool, defa
 		return tableOptions{}, err
 	}
 
-	return tableOptions{dbPath: dbPath, period: selected, groupBy: groupBy.value, filters: queryFilters}, nil
+	return tableOptions{dbPath: dbPath, period: selected, filters: queryFilters}, nil
 }
 
 func selectedPeriod(day bool, week bool, month bool, required bool, fallback period) (period, error) {
@@ -163,4 +134,4 @@ func periodStart(now time.Time, selected period) time.Time {
 	}
 }
 
-var ErrUsage = errors.New("usage: tokeninspector-cli --db-path PATH [--day|--week|--month] [--group-by=hour|session] [--session-id ID] [--provider ID] [--model ID] [--filter-day YYYY-MM-DD]\n       tokeninspector-cli table --db-path PATH [--day|--week|--month] [--group-by=hour|session] [--session-id ID] [--provider ID] [--model ID] [--filter-day YYYY-MM-DD]")
+var ErrUsage = errors.New("usage: tokeninspector-cli --db-path PATH [--day|--week|--month] [--session-id ID] [--provider ID] [--model ID] [--filter-day YYYY-MM-DD]")

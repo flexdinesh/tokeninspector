@@ -33,8 +33,6 @@ func runWithTime(ctx context.Context, args []string, stdout io.Writer, stderr io
 	}
 
 	switch args[0] {
-	case "table":
-		return cli.RunTable(ctx, args[1:], stdout, stderr, now)
 	case "help", "--help", "-h":
 		fmt.Fprintln(stdout, cli.ErrUsage)
 		return nil

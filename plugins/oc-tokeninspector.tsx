@@ -2,11 +2,21 @@
 import { isAbsolute, join } from "node:path"
 import type { TuiPlugin, TuiPluginModule } from "@opencode-ai/plugin/tui"
 import { createMemo, createSignal } from "solid-js"
-
-type StreamSample = {
-  at: number
-  tokens: number
-}
+import type {
+  MessageInfo,
+  MessageInfoUpdate,
+  MessageTiming,
+  SessionAverage,
+  StreamSample,
+  TokenCounts,
+  TokenEventRow,
+  TokenEventSource,
+  TokenStorage,
+  TokenStorageConfig,
+  TrackerState,
+  TpsSampleRow,
+  WriterResponse,
+} from "./types.ts"
 
 const STREAM_WINDOW_MS = 5_000
 const LIVE_STALE_MS = 1_500
@@ -14,99 +24,6 @@ const SINGLE_SAMPLE_MS = 1_000
 const DEFAULT_DB_NAME = "oc-tps.sqlite"
 const DEFAULT_RETENTION_DAYS = 365
 const UNKNOWN_VALUE = "unknown"
-
-type MessageTiming = {
-  sessionID: string
-  requestStartAt: number
-  firstResponseAt?: number
-  firstTokenAt?: number
-  lastTokenAt?: number
-  lastToolCallAt?: number
-}
-
-type SessionAverage = {
-  totalTokens: number
-  totalDurationMs: number
-  totalTtftMs: number
-  messageCount: number
-}
-
-type TrackerState = {
-  streamSamplesBySession: Record<string, StreamSample[]>
-  messageTimingByID: Record<string, MessageTiming>
-  sessionAverageByID: Record<string, SessionAverage>
-}
-
-type TokenCounts = {
-  total?: number
-  input: number
-  output: number
-  reasoning: number
-  cache: {
-    read: number
-    write: number
-  }
-}
-
-type MessageInfo = {
-  sessionID: string
-  provider: string
-  model: string
-}
-
-type TokenEventSource = "step-finish" | "message-fallback"
-
-type TokenEventRow = {
-  recordedAt: string
-  recordedAtMs: number
-  sessionID: string
-  messageID: string
-  partID: string
-  source: TokenEventSource
-  provider: string
-  model: string
-  inputTokens: number
-  outputTokens: number
-  reasoningTokens: number
-  cacheReadTokens: number
-  cacheWriteTokens: number
-  totalTokens: number
-}
-
-type TpsSampleRow = {
-  recordedAt: string
-  recordedAtMs: number
-  sessionID: string
-  messageID: string
-  provider: string
-  model: string
-  outputTokens: number
-  reasoningTokens: number
-  totalTokens: number
-  durationMs: number
-  ttftMs: number
-  tokensPerSecond: number
-}
-
-type TokenStorageConfig = {
-  dbPath: string
-  retentionDays: number
-}
-
-type TokenStorage = {
-  flush: (tokenRows: TokenEventRow[], tpsRows: TpsSampleRow[], infoUpdates: MessageInfoUpdate[]) => void
-  close: () => void
-}
-
-type MessageInfoUpdate = {
-  messageID: string
-  info: MessageInfo
-}
-
-type WriterResponse = {
-  type: "ready" | "flushed" | "closed" | "error"
-  message?: string
-}
 
 function readStringOption(options: Record<string, unknown> | undefined, key: string) {
   const value = options?.[key]

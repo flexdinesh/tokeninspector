@@ -314,34 +314,33 @@ Live TPS uses the last 5 seconds of estimated stream deltas and hides when idle/
 
 ## CLI Command
 
-Main command:
+The CLI runs as an interactive TUI:
 
 ```sh
-tokeninspector-cli table --db-path ~/.local/state/opencode/oc-tps.sqlite --day
+tokeninspector-cli --db-path ~/.local/state/opencode/oc-tps.sqlite --day
 ```
 
 Usage shape:
 
 ```text
-tokeninspector-cli table --db-path PATH (--day|--week|--month) [--group-by=hour|session] [--session-id ID] [--provider ID] [--model ID] [--filter-day YYYY-MM-DD]
+tokeninspector-cli --db-path PATH (--day|--week|--month) [--session-id ID] [--provider ID] [--model ID] [--filter-day YYYY-MM-DD]
 ```
 
 Only one of `--day`, `--week`, or `--month` is allowed.
 
-Only one `--group-by` is allowed. Valid values are `hour` and `session`.
-
 ## Query Flow
 
-`runTable`:
+`runInteractive`:
 
 1. Parse flags.
 2. Validate `--db-path`.
 3. Validate exactly one period flag.
 4. Compute period start.
-5. Query rows where `recorded_at_ms >= periodStart`.
-6. Apply optional filters in memory.
-7. Aggregate rows.
-8. Render an ASCII table.
+5. Start bubbletea TUI.
+6. Load rows asynchronously.
+7. Apply optional filters in memory.
+8. Aggregate rows.
+9. Render an ASCII table in the active tab.
 
 Period starts:
 
@@ -401,33 +400,40 @@ group by day, session_id, provider, model
 
 The `session id` column is inserted after `day`.
 
-## Metrics
+## Tabs
 
-Token columns are sums over matching `oc_token_events` rows:
+The interactive TUI has three tabs. Only columns relevant to the active tab are rendered.
+
+**tokens** (default):
 
 ```text
-input
-output
-reasoning
-cache read
-cache write
-total
+day, [hour|session id, thinking], provider, model, input, output, reasoning, cache read, cache write, total
 ```
 
+Token columns are sums over matching `oc_token_events` rows.
 `total` means OpenCode `tokens.total` when present in the plugin, otherwise input + output + reasoning + cache read + cache write.
 
-TPS columns come from `oc_tps_samples`:
+**tps**:
 
+```text
+day, [hour|session id, thinking], provider, model, tps avg, tps mean, tps median
+```
+
+TPS columns come from `oc_tps_samples`:
 ```text
 tps avg: sum(total_tokens) / (sum(duration_ms) / 1000)
 tps mean: arithmetic mean of row-level tokens_per_second
 tps median: median of row-level tokens_per_second
 ```
-
 TPS `total_tokens` is output + reasoning and is separate from token-event `total_tokens`.
 
-Request columns come from `oc_llm_requests`:
+**requests**:
 
+```text
+day, [hour|session id, thinking], provider, model, requests, retries
+```
+
+Request columns come from `oc_llm_requests`:
 ```text
 requests: count(attempt_index == 1)
 retries: count(attempt_index > 1)
@@ -455,16 +461,25 @@ Session grouping:
 day desc, session id asc, provider asc, model asc
 ```
 
-## Rendering
-
-`renderTable` builds rows as strings, calculates widths, left-aligns text columns, and right-aligns numeric TPS/token/request columns.
-
-Numeric columns start at:
+## Keys
 
 ```text
-default: column index 3
-group-by hour/session: column index 4
+tab         next tab
+shift+tab   previous tab
+g           open grouping popup
+↑/↓/j/k     move cursor in popup
+space       move cursor in popup
+enter       confirm grouping selection
+esc/q       close popup
+q           quit
+ctrl+c      quit
 ```
+
+## Rendering
+
+`renderTableWithWidth` builds rows as strings for the active tab, calculates widths, left-aligns text columns, and right-aligns numeric columns.
+
+Numeric columns start after the grouping columns and provider/model.
 
 ### Compact Token Units
 
@@ -513,10 +528,10 @@ If adding more grouping modes, update:
 
 ```text
 internal/cli groupByMode constants
-internal/cli groupByFlag.Set
 internal/db GroupBy enum and aggregate SQL
-internal/cli column list and renderer
-tests for new GroupBy mode
+internal/cli groupingOptions and popup labels
+internal/cli columnsForModeAndTab
+internal/cli render tests and golden files
 README.md
 docs/how-it-works.md
 ```
@@ -539,7 +554,5 @@ go build -o tokeninspector-cli ./cmd/tokeninspector-cli
 Smoke check against the real DB from `cli/`:
 
 ```sh
-./tokeninspector-cli table --db-path ~/.local/state/opencode/oc-tps.sqlite --day
-./tokeninspector-cli table --db-path ~/.local/state/opencode/oc-tps.sqlite --day --group-by=hour
-./tokeninspector-cli table --db-path ~/.local/state/opencode/oc-tps.sqlite --day --group-by=session
+./tokeninspector-cli --db-path ~/.local/state/opencode/oc-tps.sqlite --day
 ```

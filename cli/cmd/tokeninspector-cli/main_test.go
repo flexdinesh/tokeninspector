@@ -97,10 +97,6 @@ func newTestDBPath(t *testing.T) string {
 	return dbPath
 }
 
-func runTable(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer, now time.Time) error {
-	return runWithTime(ctx, append([]string{"table"}, args...), stdout, stderr, now)
-}
-
 func insertTokenEvent(t *testing.T, dbConn *sql.DB, recordedAtMs int64, sessionID, provider, model string, input, output, reasoning, cacheRead, cacheWrite, total int64) {
 	t.Helper()
 	recordedAt := time.UnixMilli(recordedAtMs).UTC().Format(time.RFC3339)
@@ -152,120 +148,11 @@ func nextMsgID() string {
 	return fmt.Sprintf("msg_%d", msgCounter)
 }
 
-func TestRunTableQueriesDB(t *testing.T) {
-	dbPath := newTestDBPath(t)
-	dbConn, err := sql.Open("sqlite", dbPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer dbConn.Close()
-
-	recordedAtMs := time.Date(2026, 4, 24, 12, 0, 0, 0, time.Local).UnixMilli()
-	insertTokenEvent(t, dbConn, recordedAtMs, "ses_1", "openai", "gpt", 100, 10, 5, 20, 1, 136)
-	insertTokenEvent(t, dbConn, recordedAtMs, "ses_1", "openai", "gpt", 200, 20, 6, 30, 2, 258)
-	insertTpsSample(t, dbConn, recordedAtMs, "ses_1", "openai", "gpt", 100, 1000, 100)
-	insertTpsSample(t, dbConn, recordedAtMs, "ses_1", "openai", "gpt", 100, 10000, 10)
-	insertRequest(t, dbConn, recordedAtMs, "ses_1", "openai", "gpt", 1, "low")
-	insertRequest(t, dbConn, recordedAtMs, "ses_1", "openai", "gpt", 2, "high")
-
-	var output bytes.Buffer
-	err = runTable(
-		context.Background(),
-		[]string{"--db-path", dbPath, "--day"},
-		&output,
-		io.Discard,
-		time.Date(2026, 4, 24, 15, 0, 0, 0, time.Local),
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	for _, expected := range []string{"2026-04-24", "openai", "gpt", "18.18", "55.00", "300", "30", "11", "50", "3", "394", "requests", "retries"} {
-		if !strings.Contains(output.String(), expected) {
-			t.Fatalf("missing %q in %q", expected, output.String())
-		}
-	}
-	if strings.Contains(output.String(), "12:00") {
-		t.Fatalf("unexpected hourly output: %q", output.String())
-	}
-}
-
-func TestRunTableQueriesDBHourly(t *testing.T) {
-	dbPath := newTestDBPath(t)
-	dbConn, err := sql.Open("sqlite", dbPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer dbConn.Close()
-
-	recordedAtMs := time.Date(2026, 4, 24, 12, 0, 0, 0, time.Local).UnixMilli()
-	insertTokenEvent(t, dbConn, recordedAtMs, "ses_1", "openai", "gpt", 100, 10, 5, 20, 1, 136)
-	insertTpsSample(t, dbConn, recordedAtMs, "ses_1", "openai", "gpt", 100, 1000, 100)
-	insertRequest(t, dbConn, recordedAtMs, "ses_1", "openai", "gpt", 1, "low")
-	insertRequest(t, dbConn, recordedAtMs, "ses_1", "openai", "gpt", 2, "high")
-
-	var output bytes.Buffer
-	err = runTable(
-		context.Background(),
-		[]string{"--db-path", dbPath, "--day", "--group-by=hour"},
-		&output,
-		io.Discard,
-		time.Date(2026, 4, 24, 13, 0, 0, 0, time.Local),
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	for _, expected := range []string{"hour", "2026-04-24", "12:00", "openai", "gpt", "100.00", "136", "requests", "retries"} {
-		if !strings.Contains(output.String(), expected) {
-			t.Fatalf("missing %q in %q", expected, output.String())
-		}
-	}
-	if strings.Contains(output.String(), "13:00") {
-		t.Fatalf("unexpected empty hourly row: %q", output.String())
-	}
-}
-
-func TestRunTableQueriesDBSession(t *testing.T) {
-	dbPath := newTestDBPath(t)
-	dbConn, err := sql.Open("sqlite", dbPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer dbConn.Close()
-
-	recordedAtMs := time.Date(2026, 4, 24, 12, 0, 0, 0, time.Local).UnixMilli()
-	insertTokenEvent(t, dbConn, recordedAtMs, "ses_1", "openai", "gpt", 100, 10, 5, 20, 1, 136)
-	insertTokenEvent(t, dbConn, recordedAtMs, "ses_2", "openai", "gpt", 200, 20, 6, 30, 2, 258)
-	insertTpsSample(t, dbConn, recordedAtMs, "ses_1", "openai", "gpt", 100, 1000, 100)
-	insertTpsSample(t, dbConn, recordedAtMs, "ses_2", "openai", "gpt", 200, 2000, 100)
-	insertRequest(t, dbConn, recordedAtMs, "ses_1", "openai", "gpt", 1, "low")
-	insertRequest(t, dbConn, recordedAtMs, "ses_1", "openai", "gpt", 2, "high")
-
-	var output bytes.Buffer
-	err = runTable(
-		context.Background(),
-		[]string{"--db-path", dbPath, "--day", "--group-by=session"},
-		&output,
-		io.Discard,
-		time.Date(2026, 4, 24, 13, 0, 0, 0, time.Local),
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	for _, expected := range []string{"session id", "thinking", "2026-04-24", "ses_1", "ses_2", "high", "openai", "gpt", "100.00", "136", "258", "requests", "retries"} {
-		if !strings.Contains(output.String(), expected) {
-			t.Fatalf("missing %q in %q", expected, output.String())
-		}
-	}
-}
-
-func TestRunTableMissingDB(t *testing.T) {
+func TestMissingDBPath(t *testing.T) {
 	var stderr bytes.Buffer
-	err := runTable(
+	err := runWithTime(
 		context.Background(),
-		[]string{"--db-path", filepath.Join(t.TempDir(), "missing.sqlite"), "--day"},
+		[]string{"--day"},
 		io.Discard,
 		&stderr,
 		time.Date(2026, 4, 24, 15, 0, 0, 0, time.Local),
@@ -273,16 +160,16 @@ func TestRunTableMissingDB(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if !strings.Contains(err.Error(), "db not found") {
+	if !strings.Contains(err.Error(), "missing --db-path") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
-func TestRunTableInvalidGroupBy(t *testing.T) {
+func TestInvalidPeriod(t *testing.T) {
 	var stderr bytes.Buffer
-	err := runTable(
+	err := runWithTime(
 		context.Background(),
-		[]string{"--db-path", filepath.Join(t.TempDir(), "missing.sqlite"), "--day", "--group-by=provider"},
+		[]string{"--db-path", filepath.Join(t.TempDir(), "test.sqlite"), "--day", "--week"},
 		io.Discard,
 		&stderr,
 		time.Date(2026, 4, 24, 15, 0, 0, 0, time.Local),
@@ -290,16 +177,16 @@ func TestRunTableInvalidGroupBy(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if !strings.Contains(err.Error(), "invalid --group-by") {
+	if !strings.Contains(err.Error(), "choose exactly one") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
-func TestRunTableRepeatedGroupBy(t *testing.T) {
+func TestUnexpectedArgument(t *testing.T) {
 	var stderr bytes.Buffer
-	err := runTable(
+	err := runWithTime(
 		context.Background(),
-		[]string{"--db-path", filepath.Join(t.TempDir(), "missing.sqlite"), "--day", "--group-by=hour", "--group-by=session"},
+		[]string{"--db-path", filepath.Join(t.TempDir(), "test.sqlite"), "--day", "unexpected"},
 		io.Discard,
 		&stderr,
 		time.Date(2026, 4, 24, 15, 0, 0, 0, time.Local),
@@ -307,7 +194,24 @@ func TestRunTableRepeatedGroupBy(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if !strings.Contains(err.Error(), "only one --group-by") {
+	if !strings.Contains(err.Error(), "unexpected argument") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestHelp(t *testing.T) {
+	var stdout bytes.Buffer
+	err := runWithTime(
+		context.Background(),
+		[]string{"--help"},
+		&stdout,
+		io.Discard,
+		time.Date(2026, 4, 24, 15, 0, 0, 0, time.Local),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stdout.String(), "usage:") {
+		t.Fatalf("expected usage in output: %q", stdout.String())
 	}
 }

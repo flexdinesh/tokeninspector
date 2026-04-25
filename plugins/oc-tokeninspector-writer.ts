@@ -1,53 +1,18 @@
 import { mkdirSync } from "node:fs"
 import { dirname } from "node:path"
 import { Database } from "bun:sqlite"
+import { applySchema } from "./schema-migrate.ts"
+import type {
+  MessageInfo,
+  MessageInfoUpdate,
+  TokenEventRow,
+  TokenEventSource,
+  TokenStorage,
+  TpsSampleRow,
+  WriterResponse,
+} from "./types.ts"
 
 const DAY_MS = 24 * 60 * 60 * 1000
-
-type TokenEventSource = "step-finish" | "message-fallback"
-
-type MessageInfo = {
-  sessionID: string
-  provider: string
-  model: string
-}
-
-type TokenEventRow = {
-  recordedAt: string
-  recordedAtMs: number
-  sessionID: string
-  messageID: string
-  partID: string
-  source: TokenEventSource
-  provider: string
-  model: string
-  inputTokens: number
-  outputTokens: number
-  reasoningTokens: number
-  cacheReadTokens: number
-  cacheWriteTokens: number
-  totalTokens: number
-}
-
-type TpsSampleRow = {
-  recordedAt: string
-  recordedAtMs: number
-  sessionID: string
-  messageID: string
-  provider: string
-  model: string
-  outputTokens: number
-  reasoningTokens: number
-  totalTokens: number
-  durationMs: number
-  ttftMs: number
-  tokensPerSecond: number
-}
-
-type MessageInfoUpdate = {
-  messageID: string
-  info: MessageInfo
-}
 
 type InitMessage = {
   type: "init"
@@ -68,16 +33,6 @@ type CloseMessage = {
 
 type WorkerMessage = InitMessage | FlushMessage | CloseMessage
 
-type WriterResponse = {
-  type: "ready" | "flushed" | "closed" | "error"
-  message?: string
-}
-
-type TokenStorage = {
-  flush: (tokenRows: TokenEventRow[], tpsRows: TpsSampleRow[], infoUpdates: MessageInfoUpdate[]) => void
-  close: () => void
-}
-
 function post(response: WriterResponse) {
   self.postMessage(response)
 }
@@ -86,60 +41,12 @@ function pruneKey(now = Date.now()) {
   return new Date(now).toISOString().slice(0, 10)
 }
 
-function createTokenStorage(dbPath: string, retentionDays: number): TokenStorage {
+async function createTokenStorage(dbPath: string, retentionDays: number): Promise<TokenStorage> {
   mkdirSync(dirname(dbPath), { recursive: true })
 
   const db = new Database(dbPath)
-  db.exec("PRAGMA journal_mode = WAL")
-  db.exec("PRAGMA busy_timeout = 5000")
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS oc_token_events (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      recorded_at TEXT NOT NULL,
-      recorded_at_ms INTEGER NOT NULL,
-      session_id TEXT NOT NULL,
-      message_id TEXT NOT NULL,
-      part_id TEXT NOT NULL,
-      source TEXT NOT NULL CHECK (source IN ('step-finish', 'message-fallback')),
-      provider TEXT NOT NULL DEFAULT 'unknown',
-      model TEXT NOT NULL DEFAULT 'unknown',
-      input_tokens INTEGER NOT NULL,
-      output_tokens INTEGER NOT NULL,
-      reasoning_tokens INTEGER NOT NULL,
-      cache_read_tokens INTEGER NOT NULL,
-      cache_write_tokens INTEGER NOT NULL,
-      total_tokens INTEGER NOT NULL,
-      UNIQUE(session_id, message_id, part_id)
-    )
-  `)
-  db.exec("CREATE INDEX IF NOT EXISTS oc_token_events_recorded_at_ms_idx ON oc_token_events (recorded_at_ms)")
-  db.exec("CREATE INDEX IF NOT EXISTS oc_token_events_session_time_idx ON oc_token_events (session_id, recorded_at_ms)")
-  db.exec(
-    "CREATE INDEX IF NOT EXISTS oc_token_events_provider_model_time_idx ON oc_token_events (provider, model, recorded_at_ms)",
-  )
-  db.exec("PRAGMA user_version = 1")
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS oc_tps_samples (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      recorded_at TEXT NOT NULL,
-      recorded_at_ms INTEGER NOT NULL,
-      session_id TEXT NOT NULL,
-      message_id TEXT NOT NULL UNIQUE,
-      provider TEXT NOT NULL DEFAULT 'unknown',
-      model TEXT NOT NULL DEFAULT 'unknown',
-      output_tokens INTEGER NOT NULL,
-      reasoning_tokens INTEGER NOT NULL,
-      total_tokens INTEGER NOT NULL,
-      duration_ms INTEGER NOT NULL,
-      ttft_ms INTEGER NOT NULL,
-      tokens_per_second REAL NOT NULL
-    )
-  `)
-  db.exec("CREATE INDEX IF NOT EXISTS oc_tps_samples_recorded_at_ms_idx ON oc_tps_samples (recorded_at_ms)")
-  db.exec("CREATE INDEX IF NOT EXISTS oc_tps_samples_session_time_idx ON oc_tps_samples (session_id, recorded_at_ms)")
-  db.exec(
-    "CREATE INDEX IF NOT EXISTS oc_tps_samples_provider_model_time_idx ON oc_tps_samples (provider, model, recorded_at_ms)",
-  )
+  const schemaSql = await Bun.file(new URL("../schema/schema.sql", import.meta.url)).text()
+  applySchema(db, schemaSql)
 
   const insertEvent = db.prepare(`
     INSERT OR IGNORE INTO oc_token_events (
@@ -322,11 +229,11 @@ function createTokenStorage(dbPath: string, retentionDays: number): TokenStorage
 
 let storage: TokenStorage | undefined
 
-self.onmessage = (event: MessageEvent<WorkerMessage>) => {
+self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
   try {
     const message = event.data
     if (message.type === "init") {
-      storage = createTokenStorage(message.dbPath, message.retentionDays)
+      storage = await createTokenStorage(message.dbPath, message.retentionDays)
       post({ type: "ready" })
       return
     }
