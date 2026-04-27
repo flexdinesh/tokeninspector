@@ -25,6 +25,8 @@ See [`docs/design.md`](docs/design.md) for full architecture, schema contract, e
 | Any `.go` in `cli/` | `cd cli && go test ./... && go build -o tokeninspector-cli .` |
 | Storage, schema, events, SQL, aggregation, rendering, or tests | Update **both** plugin and CLI; run all of the above |
 
+> ⚠️ **Schema changes are user-approved only.** Never modify `schema/schema.sql` without explicit user approval, even for additive changes. Always explain the rationale and ask first.
+
 ### Plugin smoke builds
 
 ```sh
@@ -45,7 +47,7 @@ go build -o tokeninspector-cli .
 
 ```sh
 cd cli
-./tokeninspector-cli --db-path ~/.local/state/opencode/oc-tps.sqlite --day
+./tokeninspector-cli --db-path ~/.local/state/opencode/oc-tps.sqlite --today
 ```
 
 ## Install OpenCode Plugins
@@ -103,13 +105,15 @@ The Pi extension writes to the same DB as the OpenCode plugins (`~/.local/state/
 ## CLI Usage
 
 ```sh
-tokeninspector-cli --db-path ~/.local/state/opencode/oc-tps.sqlite --day
+tokeninspector-cli --db-path ~/.local/state/opencode/oc-tps.sqlite --today
 tokeninspector-cli --db-path ~/.local/state/opencode/oc-tps.sqlite --week
 tokeninspector-cli --db-path ~/.local/state/opencode/oc-tps.sqlite --month
+tokeninspector-cli --db-path ~/.local/state/opencode/oc-tps.sqlite --all-time
 tokeninspector-cli --db-path ~/.local/state/opencode/oc-tps.sqlite --week --group-by=hour
 tokeninspector-cli --db-path ~/.local/state/opencode/oc-tps.sqlite --week --group-by=session
 tokeninspector-cli --db-path ~/.local/state/opencode/oc-tps.sqlite --week --provider openai --model gpt-5.5
-tokeninspector-cli --db-path ~/.local/state/opencode/oc-tps.sqlite --month --filter-day 2026-04-24,2026-04-23
+tokeninspector-cli --db-path ~/.local/state/opencode/oc-tps.sqlite --month
+tokeninspector-cli --db-path ~/.local/state/opencode/oc-tps.sqlite --all-time --filter-day 2026-04-24,2026-04-23
 ```
 
 Interactive keys:

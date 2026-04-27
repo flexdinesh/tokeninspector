@@ -31,6 +31,9 @@ type interactiveModel struct {
 	options      tableOptions
 	now          time.Time
 	err          error
+	cachedWidth  int
+	baseHeight   int
+	perRowHeight int
 }
 
 var groupingOptions = []groupByMode{groupBySession, groupByNone, groupByHour}
@@ -58,14 +61,84 @@ func popupIndexForGroupBy(g groupByMode) int {
 	return 0
 }
 
+const minVisibleRows = 5
+
 func (m interactiveModel) maxVisibleRows() int {
 	if m.height <= 0 {
 		return 0
 	}
-	if m.groupBy == groupByHour {
-		return max(1, (m.height-14)/3)
+	if m.width == m.cachedWidth && m.perRowHeight > 0 {
+		available := m.height - m.baseHeight
+		if available <= 0 {
+			return minVisibleRows
+		}
+		// Leave a 3-row safety margin so wrapped rows don't push the table
+		// over the terminal edge and cause the view to jump during scroll.
+		maxRows := max(0, available-3) / m.perRowHeight
+		return max(minVisibleRows, maxRows)
 	}
-	return max(1, (m.height-14)/2)
+	if m.groupBy == groupByHour {
+		return max(minVisibleRows, (m.height-14)/3)
+	}
+	return max(minVisibleRows, (m.height-14)/2)
+}
+
+func (m interactiveModel) measureHeights() interactiveModel {
+	if m.width <= 0 {
+		return m
+	}
+
+	title := titleStyle.Render(fmt.Sprintf("Token Inspector %s", m.period))
+
+	var tabs []string
+	for i := tabTokens; i <= tabRequests; i++ {
+		label := i.String()
+		if i == m.activeTab {
+			tabs = append(tabs, activeTabStyle.Render(label))
+		} else {
+			tabs = append(tabs, inactiveTabStyle.Render(label))
+		}
+	}
+	tabBar := lipgloss.JoinHorizontal(lipgloss.Top, tabs...)
+	tabBox := sectionBorderStyle.Width(m.width - 4).Render(tabBar)
+
+	hintText := "tab/shift+tab switch · ↑/↓ j/k scroll · g grouping · q quit  ·  99999-99999 of 99999"
+	hint := hintStyle.Render(hintText)
+	hintBox := sectionBorderStyle.Width(m.width - 4).Render(hint)
+
+	emptyTable := renderTableWithWidth([]renderRow{}, m.groupBy, m.activeTab, m.width-2)
+	contentBase := lipgloss.JoinVertical(lipgloss.Left, title, tabBox, emptyTable, hintBox)
+	baseFull := outerBorderStyle.Width(m.width - 2).Render(contentBase)
+	m.baseHeight = lipgloss.Height(baseFull)
+
+	sampleRow := renderRow{
+		day: "2006-01-01", harness: "oc", provider: "openai", model: "gpt-4o",
+		inputTokens: "1000", outputTokens: "100", reasoningTokens: "10",
+		cacheReadTokens: "5", cacheWriteTokens: "1", totalTokens: "1116",
+		tpsAvg: "12.34", tpsMean: "56.78", tpsMedian: "45.67",
+		requests: "3", retries: "1",
+	}
+	if m.groupBy == groupByHour {
+		sampleRow.hour = "12:00"
+	}
+	if m.groupBy == groupBySession {
+		sampleRow.sessionID = "sess_12345678"
+		sampleRow.thinkingLevels = "low"
+	}
+
+	// Measure cost of a single data row (no separators).
+	oneRowTable := renderTableWithWidth([]renderRow{sampleRow}, m.groupBy, m.activeTab, m.width-2)
+	contentOneRow := lipgloss.JoinVertical(lipgloss.Left, title, tabBox, oneRowTable, hintBox)
+	oneRowFull := outerBorderStyle.Width(m.width - 2).Render(contentOneRow)
+	perDataRow := lipgloss.Height(oneRowFull) - m.baseHeight
+	if perDataRow <= 0 {
+		perDataRow = 1
+	}
+
+	m.perRowHeight = perDataRow
+	m.cachedWidth = m.width
+
+	return m
 }
 
 func clampScroll(offset int, totalRows int, visible int) int {
@@ -105,12 +178,14 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.activeTab > tabRequests {
 				m.activeTab = tabTokens
 			}
+			m = m.measureHeights()
 			return m, nil
 		case tea.KeyShiftTab:
 			m.activeTab--
 			if m.activeTab < 0 {
 				m.activeTab = tabRequests
 			}
+			m = m.measureHeights()
 			return m, nil
 		case tea.KeyUp:
 			if m.scrollOffset > 0 {
@@ -145,6 +220,7 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m = m.measureHeights()
 		m.scrollOffset = clampScroll(m.scrollOffset, len(m.rows), m.maxVisibleRows())
 	}
 	return m, nil
@@ -170,6 +246,7 @@ func (m interactiveModel) handlePopupKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if newGroupBy != m.groupBy {
 			m.groupBy = newGroupBy
 			m.scrollOffset = 0
+			m = m.measureHeights()
 			return m, m.reloadCmd()
 		}
 		return m, nil
@@ -266,7 +343,7 @@ func (m interactiveModel) View() string {
 		if end > len(m.rows) {
 			end = len(m.rows)
 		}
-		hintText += fmt.Sprintf("  ·  %d-%d of %d", m.scrollOffset+1, end, len(m.rows))
+		hintText += fmt.Sprintf("  ·  %5d-%5d of %5d", m.scrollOffset+1, end, len(m.rows))
 	}
 	hint := hintStyle.Render(hintText)
 	hintBox := sectionBorderStyle.Width(m.width - 4).Render(hint)
@@ -333,7 +410,8 @@ func loadRows(ctx context.Context, options tableOptions, now time.Time, groupBy 
 		SessionIDs: []string(options.filters.sessionIDs),
 		Providers:  []string(options.filters.providers),
 		Models:     []string(options.filters.models),
-		Days:       []string(options.filters.days),
+		DayFrom:    options.filters.dayFrom,
+		DayTo:      options.filters.dayTo,
 	}
 
 	var g db.GroupBy

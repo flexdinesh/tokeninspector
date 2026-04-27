@@ -622,3 +622,83 @@ func containsHelper(s, substr string) bool {
 	}
 	return false
 }
+
+func TestFilterDayRange(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	day20 := time.Date(2026, 4, 20, 12, 0, 0, 0, time.Local).UnixMilli()
+	day21 := time.Date(2026, 4, 21, 12, 0, 0, 0, time.Local).UnixMilli()
+	day22 := time.Date(2026, 4, 22, 12, 0, 0, 0, time.Local).UnixMilli()
+
+	insertTokenEvent(t, db, day20, "ses_1", "openai", "gpt", 100, 10, 5, 20, 1, 136)
+	insertTokenEvent(t, db, day21, "ses_2", "anthropic", "claude", 200, 20, 6, 30, 2, 258)
+	insertTokenEvent(t, db, day22, "ses_3", "openai", "gpt", 300, 30, 7, 40, 3, 380)
+
+	events, err := Events(context.Background(), db, Filter{
+		DayFrom: "2026-04-21",
+		DayTo:   "2026-04-21",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("got %d events, want 1", len(events))
+	}
+	if events[0].Provider != "anthropic" {
+		t.Fatalf("unexpected provider: %s", events[0].Provider)
+	}
+}
+
+func TestFilterDayRangeInclusive(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	day20 := time.Date(2026, 4, 20, 12, 0, 0, 0, time.Local).UnixMilli()
+	day21 := time.Date(2026, 4, 21, 12, 0, 0, 0, time.Local).UnixMilli()
+	day22 := time.Date(2026, 4, 22, 12, 0, 0, 0, time.Local).UnixMilli()
+
+	insertTokenEvent(t, db, day20, "ses_1", "openai", "gpt", 100, 10, 5, 20, 1, 136)
+	insertTokenEvent(t, db, day21, "ses_2", "anthropic", "claude", 200, 20, 6, 30, 2, 258)
+	insertTokenEvent(t, db, day22, "ses_3", "openai", "gpt", 300, 30, 7, 40, 3, 380)
+
+	events, err := Events(context.Background(), db, Filter{
+		DayFrom: "2026-04-20",
+		DayTo:   "2026-04-22",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 3 {
+		t.Fatalf("got %d events, want 3", len(events))
+	}
+}
+
+func TestAggregateAllTime(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	dayOld := time.Date(2026, 4, 10, 12, 0, 0, 0, time.Local).UnixMilli()
+	dayNew := time.Date(2026, 4, 24, 12, 0, 0, 0, time.Local).UnixMilli()
+
+	insertTokenEvent(t, db, dayOld, "ses_1", "openai", "gpt", 100, 10, 5, 20, 1, 136)
+	insertTokenEvent(t, db, dayNew, "ses_2", "anthropic", "claude", 200, 20, 6, 30, 2, 258)
+
+	rows, err := Aggregate(context.Background(), db, Filter{
+		// Start is zero — all time
+	}, GroupByDay)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("got %d rows, want 2", len(rows))
+	}
+
+	// Sorted by day desc
+	if rows[0].Day != "2026-04-24" {
+		t.Fatalf("unexpected first day: %s", rows[0].Day)
+	}
+	if rows[1].Day != "2026-04-10" {
+		t.Fatalf("unexpected second day: %s", rows[1].Day)
+	}
+}

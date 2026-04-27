@@ -15,14 +15,15 @@ The default interactive view shows the current week. Press `q` to quit.
 More examples:
 
 ```sh
-tokeninspector-cli table --db-path ~/.local/state/opencode/oc-tps.sqlite --day
+tokeninspector-cli table --db-path ~/.local/state/opencode/oc-tps.sqlite --today
 tokeninspector-cli table --db-path ~/.local/state/opencode/oc-tps.sqlite --week
 tokeninspector-cli table --db-path ~/.local/state/opencode/oc-tps.sqlite --month
-tokeninspector-cli table --db-path ~/.local/state/opencode/oc-tps.sqlite --day --group-by=hour
+tokeninspector-cli table --db-path ~/.local/state/opencode/oc-tps.sqlite --all-time
+tokeninspector-cli table --db-path ~/.local/state/opencode/oc-tps.sqlite --today --group-by=hour
 tokeninspector-cli table --db-path ~/.local/state/opencode/oc-tps.sqlite --week --group-by=hour
 tokeninspector-cli table --db-path ~/.local/state/opencode/oc-tps.sqlite --week --group-by=session
 tokeninspector-cli table --db-path ~/.local/state/opencode/oc-tps.sqlite --week --provider openai --model gpt-5.5
-tokeninspector-cli table --db-path ~/.local/state/opencode/oc-tps.sqlite --month --filter-day 2026-04-24 --session-id ses_abc,ses_xyz
+tokeninspector-cli table --db-path ~/.local/state/opencode/oc-tps.sqlite --month --filter-day-from 2026-04-20 --filter-day-to 2026-04-25 --session-id ses_abc,ses_xyz
 ```
 
 ## Commands
@@ -33,7 +34,7 @@ Open the styled terminal UI. Defaults to the current week when no period flag is
 
 ```sh
 tokeninspector-cli --db-path ~/.local/state/opencode/oc-tps.sqlite
-tokeninspector-cli --db-path ~/.local/state/opencode/oc-tps.sqlite --day
+tokeninspector-cli --db-path ~/.local/state/opencode/oc-tps.sqlite --today
 tokeninspector-cli --db-path ~/.local/state/opencode/oc-tps.sqlite --month --group-by=session
 ```
 
@@ -53,17 +54,21 @@ Default OpenCode state path on this machine:
 ~/.local/state/opencode/oc-tps.sqlite
 ```
 
-`--day`
+`--today`
 
 Show data from today, grouped by day unless `--group-by` is present.
 
 `--week`
 
-Show data from the current 7-day window, grouped by day unless `--group-by` is present.
+Show data from the current calendar week (Monday 00:00 to Sunday 23:59), grouped by day unless `--group-by` is present.
 
 `--month`
 
 Show data from the current calendar month, grouped by day unless `--group-by` is present.
+
+`--all-time`
+
+Show all data with no time filter. This can be slow on large databases.
 
 `--group-by=hour|session`
 
@@ -98,13 +103,19 @@ Optional. Filter by model ID. Can be repeated or comma-separated.
 tokeninspector-cli table --db-path ~/.local/state/opencode/oc-tps.sqlite --week --model gpt-5.5 --model claude-opus-4.7
 ```
 
-`--filter-day YYYY-MM-DD`
+`--filter-day-from YYYY-MM-DD`
 
-Optional. Filter by local day. Can be repeated or comma-separated. This filter applies inside the selected `--day`, `--week`, or `--month` window.
+Optional. Filter from this local day (inclusive). Must be a valid `YYYY-MM-DD` date.
+
+`--filter-day-to YYYY-MM-DD`
+
+Optional. Filter to this local day (inclusive). Must be a valid `YYYY-MM-DD` date. `--filter-day-from` must not be after `--filter-day-to`.
+
+These range filters apply in addition to any selected period (`--today`, `--week`, `--month`, `--all-time`).
 
 ```sh
-tokeninspector-cli table --db-path ~/.local/state/opencode/oc-tps.sqlite --month --filter-day 2026-04-24 --filter-day 2026-04-23
-tokeninspector-cli table --db-path ~/.local/state/opencode/oc-tps.sqlite --month --filter-day 2026-04-24,2026-04-23
+tokeninspector-cli table --db-path ~/.local/state/opencode/oc-tps.sqlite --month --filter-day-from 2026-04-20 --filter-day-to 2026-04-25
+tokeninspector-cli table --db-path ~/.local/state/opencode/oc-tps.sqlite --all-time --filter-day-from 2026-04-20 --filter-day-to 2026-04-25
 ```
 
 Interactive mode defaults to `--week` when no period flag is passed.
@@ -166,16 +177,16 @@ Hourly output:
 
 ```text
 day        | hour  | provider       | model           | tps avg | tps mean | tps median | input | output | reasoning | cache read | cache write | total | requests | retries
-2026-04-24 | 16:00 | github-copilot | claude-opus-4.7 |   68.30 |   553.52 |     127.86 |   32K |    900 |       300 |        21K |         200 |   54K |        4 |       1
-2026-04-24 | 16:00 | openai         | gpt-5.5         |   45.24 |  2230.81 |      66.91 |   21K |    500 |       250 |        12K |         100 |   33K |        3 |       0
+2026-04-24 | 16:00 | github-copilot | claude-opus-4.7 |   68.30 |   553.52 │     127.86 │   32K │    900 │       300 │        21K │         200 │   54K │        4 │       1
+2026-04-24 | 16:00 | openai         | gpt-5.5         │   45.24 │  2230.81 │      66.91 │   21K │    500 │       250 │        12K │         100 │   33K │        3 │       0
 ```
 
 Session output:
 
 ```text
-day        | session id | thinking | provider       | model           | tps avg | tps mean | tps median | input | output | reasoning | cache read | cache write | total | requests | retries
-2026-04-24 | ses_abc    | high     | github-copilot | claude-opus-4.7 |   68.30 |   553.52 |     127.86 |   32K |    900 |       300 |        21K |         200 |   54K |        4 |       1
-2026-04-24 | ses_xyz    | low,high | openai         | gpt-5.5         |   45.24 |  2230.81 |      66.91 |   21K |    500 |       250 |        12K |         100 |   33K |        3 |       0
+day        | session id | thinking | provider       │ model           │ tps avg │ tps mean │ tps median │ input │ output │ reasoning │ cache read │ cache write │ total │ requests │ retries
+2026-04-24 │ ses_abc    │ high     │ github-copilot │ claude-opus-4.7 │   68.30 │   553.52 │     127.86 │   32K │    900 │       300 │        21K │         200 │   54K │        4 │       1
+2026-04-24 │ ses_xyz    │ low,high │ openai         │ gpt-5.5         │   45.24 │  2230.81 │      66.91 │   21K │    500 │       250 │        12K │         100 │   33K │        3 │       0
 ```
 
 ## Notes

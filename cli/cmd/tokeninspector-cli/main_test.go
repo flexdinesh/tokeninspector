@@ -152,7 +152,7 @@ func TestMissingDBPath(t *testing.T) {
 	var stderr bytes.Buffer
 	err := runWithTime(
 		context.Background(),
-		[]string{"--day"},
+		[]string{"--today"},
 		io.Discard,
 		&stderr,
 		time.Date(2026, 4, 24, 15, 0, 0, 0, time.Local),
@@ -169,7 +169,7 @@ func TestInvalidPeriod(t *testing.T) {
 	var stderr bytes.Buffer
 	err := runWithTime(
 		context.Background(),
-		[]string{"--db-path", filepath.Join(t.TempDir(), "test.sqlite"), "--day", "--week"},
+		[]string{"--db-path", filepath.Join(t.TempDir(), "test.sqlite"), "--today", "--week"},
 		io.Discard,
 		&stderr,
 		time.Date(2026, 4, 24, 15, 0, 0, 0, time.Local),
@@ -186,7 +186,7 @@ func TestUnexpectedArgument(t *testing.T) {
 	var stderr bytes.Buffer
 	err := runWithTime(
 		context.Background(),
-		[]string{"--db-path", filepath.Join(t.TempDir(), "test.sqlite"), "--day", "unexpected"},
+		[]string{"--db-path", filepath.Join(t.TempDir(), "test.sqlite"), "--today", "unexpected"},
 		io.Discard,
 		&stderr,
 		time.Date(2026, 4, 24, 15, 0, 0, 0, time.Local),

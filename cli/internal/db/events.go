@@ -14,7 +14,8 @@ type Filter struct {
 	SessionIDs []string
 	Providers  []string
 	Models     []string
-	Days       []string // YYYY-MM-DD local
+	DayFrom    string // YYYY-MM-DD local
+	DayTo      string // YYYY-MM-DD local
 }
 
 // Event is a single durable token-event row from oc_token_events.
@@ -46,8 +47,10 @@ func buildFilterArgs(f Filter) ([]any, []string) {
 	var args []any
 	var where []string
 
-	where = append(where, fmt.Sprintf("%s >= ?", ColRecordedAtMs))
-	args = append(args, f.Start.UnixMilli())
+	if !f.Start.IsZero() {
+		where = append(where, fmt.Sprintf("%s >= ?", ColRecordedAtMs))
+		args = append(args, f.Start.UnixMilli())
+	}
 
 	if len(f.SessionIDs) > 0 {
 		where = append(where, fmt.Sprintf("%s IN (%s)", ColSessionID, placeholders(len(f.SessionIDs))))
@@ -67,11 +70,13 @@ func buildFilterArgs(f Filter) ([]any, []string) {
 			args = append(args, m)
 		}
 	}
-	if len(f.Days) > 0 {
-		where = append(where, fmt.Sprintf("date(%s/1000, 'unixepoch', 'localtime') IN (%s)", ColRecordedAtMs, placeholders(len(f.Days))))
-		for _, d := range f.Days {
-			args = append(args, d)
-		}
+	if f.DayFrom != "" {
+		where = append(where, fmt.Sprintf("date(%s/1000, 'unixepoch', 'localtime') >= ?", ColRecordedAtMs))
+		args = append(args, f.DayFrom)
+	}
+	if f.DayTo != "" {
+		where = append(where, fmt.Sprintf("date(%s/1000, 'unixepoch', 'localtime') <= ?", ColRecordedAtMs))
+		args = append(args, f.DayTo)
 	}
 	return args, where
 }

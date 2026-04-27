@@ -10,6 +10,7 @@ Full architecture, schema contract, event flow, and invariants are in [`docs/des
 - **Never use `any`** or type assertions (`!`, `as Type`) in TypeScript.
 - **Plugin and CLI are one project**. When changing storage, schema, events, SQL, aggregation, metric names, table columns, docs, or tests, update both sides in the same task.
 - **Schema is the contract**. `schema/schema.sql` is the single source of truth. Plugin auto-migrates from it; CLI validates `PRAGMA user_version` against it.
+- **Schema changes require explicit user approval**. Before modifying `schema/schema.sql`, table structures, column definitions, or any cross-language schema contract, clearly explain the reasons to the user and ask for explicit approval. Never make silent or implicit schema changes — even for non-breaking additions.
 - **TPS is first-class**. Do not remove `oc_tps_samples`, `tps avg`, `tps mean`, or `tps median` when changing token schema.
 - **`session_id` is required** for every durable row. Never allow token data without it.
 - **Prefer real token data** over estimated stream deltas. `message.part.delta` is live UI only.

@@ -164,7 +164,7 @@ var (
 	cellStyle      = lipgloss.NewStyle().Padding(0, 1)
 	oddStyle       = cellStyle.Foreground(lipgloss.Color("252"))
 	evenStyle      = cellStyle.Foreground(lipgloss.Color("245"))
-	separatorStyle = cellStyle.Foreground(lipgloss.Color("240"))
+
 	numberStyle    = cellStyle.Align(lipgloss.Right)
 	borderStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	outerBorderStyle   = lipgloss.NewStyle().
@@ -175,34 +175,7 @@ var (
 				BorderForeground(lipgloss.Color("245"))
 )
 
-type rowMeta struct {
-	isSeparator bool
-}
 
-func insertHourSeparators(rows []renderRow, formatted [][]string) ([][]string, []rowMeta) {
-	if len(rows) == 0 {
-		return formatted, nil
-	}
-
-	expanded := make([][]string, 0, len(formatted)*2)
-	metas := make([]rowMeta, 0, len(formatted)*2)
-
-	emptyRow := make([]string, len(formatted[0]))
-
-	for i, values := range formatted {
-		expanded = append(expanded, values)
-		metas = append(metas, rowMeta{isSeparator: false})
-
-		if i < len(rows)-1 {
-			if rows[i].day != rows[i+1].day || rows[i].hour != rows[i+1].hour {
-				expanded = append(expanded, emptyRow)
-				metas = append(metas, rowMeta{isSeparator: true})
-			}
-		}
-	}
-
-	return expanded, metas
-}
 
 func renderTable(rows []renderRow, g groupByMode, tab tabMode) string {
 	return renderTableWithWidth(rows, g, tab, 0)
@@ -264,11 +237,6 @@ func renderTableWithWidth(rows []renderRow, g groupByMode, tab tabMode, width in
 		formatted = append(formatted, values)
 	}
 
-	var metas []rowMeta
-	if g == groupByHour {
-		formatted, metas = insertHourSeparators(rows, formatted)
-	}
-
 	uiTable := table.New().
 		Border(lipgloss.RoundedBorder()).
 		BorderStyle(borderStyle).
@@ -278,29 +246,9 @@ func renderTableWithWidth(rows []renderRow, g groupByMode, tab tabMode, width in
 			if row == table.HeaderRow {
 				return headerStyle
 			}
-			if g == groupByHour && row >= 1 && row-1 < len(metas) && metas[row-1].isSeparator {
-				if col < len(cols) && cols[col].numeric {
-					return numberStyle.Inherit(separatorStyle)
-				}
-				return separatorStyle
-			}
-			var base lipgloss.Style
-			if g == groupByHour {
-				dataRowCount := 0
-				for i := 1; i < row; i++ {
-					if i-1 < len(metas) && !metas[i-1].isSeparator {
-						dataRowCount++
-					}
-				}
-				base = oddStyle
-				if dataRowCount%2 == 0 {
-					base = evenStyle
-				}
-			} else {
-				base = oddStyle
-				if row%2 == 0 {
-					base = evenStyle
-				}
+			base := oddStyle
+			if row%2 == 0 {
+				base = evenStyle
 			}
 			if col < len(cols) && cols[col].numeric {
 				return numberStyle.Inherit(base)

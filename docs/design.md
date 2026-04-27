@@ -141,6 +141,8 @@ Identical schema to `oc_llm_requests`. `attempt_index` is always `1` because Pi 
 
 Plugin writers auto-migrate the DB using `plugins/shared/schema-migrate.ts`, which reads `schema/schema.sql` at init time. The migration parses `CREATE TABLE IF NOT EXISTS` and `ALTER TABLE ADD COLUMN` for missing columns.
 
+**Any modification to `schema/schema.sql` or related cross-language schema contract requires explicit user approval.** Clearly surface the rationale and impact to the user and ask for explicit approval before implementation — even for non-breaking additive changes.
+
 Cross-language contract is validated by:
 - `scripts/check-schema.ts` — parses SQL, Go constants, and TS types
 - `cli/internal/db/schema_test.go` — Go-level contract test
@@ -228,13 +230,15 @@ Runs as a Pi coding-agent extension. **One extension collects all data**: tokens
 
 ### Query Flow (`RunInteractive`)
 
-1. Parse flags (`--db-path`, `--day`, `--week`, `--month`, filters).
+1. Parse flags (`--db-path`, `--today`, `--week`, `--month`, filters).
 2. Validate `--db-path` exists and is a file.
 3. Validate exactly one period flag.
 4. Compute period start:
-   - `--day`: today 00:00 local time
-   - `--week`: today 00:00 minus 6 days
+   - `--today`: today 00:00 local time
+   - `--week`: Monday 00:00 local time of current calendar week
    - `--month`: first day of current month 00:00 local time
+   - `--all-time`: no start filter (show all data)
+   - Default (no period flag): `--week`
 5. Open DB read-only.
 6. Load and aggregate rows asynchronously with filters pushed into SQL WHERE clauses.
 7. Render an ASCII table in the active tab.
@@ -286,9 +290,12 @@ All filters can be repeated or comma-separated:
 - `--session-id`: exact match against `session_id`
 - `--provider`: exact match against `provider`
 - `--model`: exact match against `model`
-- `--filter-day`: local `YYYY-MM-DD` derived from `recorded_at_ms`
+- `--filter-day-from YYYY-MM-DD`: inclusive lower bound on local day derived from `recorded_at_ms`
+- `--filter-day-to YYYY-MM-DD`: inclusive upper bound on local day derived from `recorded_at_ms`
+  - `--filter-day-from` must not be after `--filter-day-to`
+  - Both must be valid `YYYY-MM-DD` dates
 
-Filtering currently happens in memory after the period query. If the DB grows large, move filters into SQL.
+Period and date range filters are pushed into SQL WHERE clauses.
 
 ## Invariants (What Can & Cannot Change)
 
@@ -303,6 +310,8 @@ Filtering currently happens in memory after the period query. If the DB grows la
 - `schema/schema.sql` is the single source of truth for table definitions.
 
 ### Can Evolve With Care
+
+Even the items below require explicit user approval before implementation. Surface the rationale, impact, and ask for approval.
 
 - New token columns can be added if both plugin and CLI are updated.
 - New grouping modes can be added if sort order, SQL, and rendering are updated.
@@ -364,5 +373,5 @@ go build -o tokeninspector-cli .
 
 ```sh
 cd cli
-./tokeninspector-cli --db-path ~/.local/state/opencode/oc-tps.sqlite --day
+./tokeninspector-cli --db-path ~/.local/state/opencode/oc-tps.sqlite --today
 ```
