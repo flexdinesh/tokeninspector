@@ -15,6 +15,8 @@ const (
 	tabTokens tabMode = iota
 	tabTPS
 	tabRequests
+	tabToolCalls
+	tabToolBreakdown
 )
 
 func (t tabMode) String() string {
@@ -25,6 +27,10 @@ func (t tabMode) String() string {
 		return "tps"
 	case tabRequests:
 		return "requests"
+	case tabToolCalls:
+		return "tool calls"
+	case tabToolBreakdown:
+		return "tool breakdown"
 	default:
 		return ""
 	}
@@ -74,6 +80,17 @@ func columnsForModeAndTab(g groupByMode, t tabMode) []column {
 			column{name: "requests", field: "requests", numeric: true},
 			column{name: "retries", field: "retries", numeric: true},
 		)
+	case tabToolCalls:
+		return append(grouping,
+			column{name: "tool calls", field: "toolCalls", numeric: true},
+			column{name: "errors", field: "toolErrors", numeric: true},
+		)
+	case tabToolBreakdown:
+		return append(grouping,
+			column{name: "tool", field: "toolName"},
+			column{name: "tool calls", field: "toolCalls", numeric: true},
+			column{name: "errors", field: "toolErrors", numeric: true},
+		)
 	default:
 		return grouping
 	}
@@ -98,6 +115,9 @@ type renderRow struct {
 	totalTokens      string
 	requests         string
 	retries          string
+	toolName         string
+	toolCalls        string
+	toolErrors       string
 }
 
 func displaySessionID(value string) string {
@@ -158,24 +178,22 @@ func formatTokens(value int64) string {
 }
 
 var (
-	titleStyle     = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("212"))
-	hintStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
-	headerStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("230")).Background(lipgloss.Color("63")).Padding(0, 1)
-	cellStyle      = lipgloss.NewStyle().Padding(0, 1)
-	oddStyle       = cellStyle.Foreground(lipgloss.Color("252"))
-	evenStyle      = cellStyle.Foreground(lipgloss.Color("245"))
+	titleStyle  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("212"))
+	hintStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+	headerStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("230")).Background(lipgloss.Color("63")).Padding(0, 1)
+	cellStyle   = lipgloss.NewStyle().Padding(0, 1)
+	oddStyle    = cellStyle.Foreground(lipgloss.Color("252"))
+	evenStyle   = cellStyle.Foreground(lipgloss.Color("245"))
 
-	numberStyle    = cellStyle.Align(lipgloss.Right)
-	borderStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-	outerBorderStyle   = lipgloss.NewStyle().
+	numberStyle      = cellStyle.Align(lipgloss.Right)
+	borderStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	outerBorderStyle = lipgloss.NewStyle().
 				Border(lipgloss.RoundedBorder()).
 				BorderForeground(lipgloss.Color("240"))
 	sectionBorderStyle = lipgloss.NewStyle().
 				Border(lipgloss.RoundedBorder()).
 				BorderForeground(lipgloss.Color("245"))
 )
-
-
 
 func renderTable(rows []renderRow, g groupByMode, tab tabMode) string {
 	return renderTableWithWidth(rows, g, tab, 0)
@@ -230,6 +248,12 @@ func renderTableWithWidth(rows []renderRow, g groupByMode, tab tabMode, width in
 				values[i] = row.requests
 			case "retries":
 				values[i] = row.retries
+			case "toolName":
+				values[i] = row.toolName
+			case "toolCalls":
+				values[i] = row.toolCalls
+			case "toolErrors":
+				values[i] = row.toolErrors
 			default:
 				values[i] = ""
 			}

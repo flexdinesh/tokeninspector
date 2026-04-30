@@ -14,6 +14,8 @@ import type {
   TokenEventRow,
   TokenEventSource,
   TokenStorage,
+  ToolCallRow,
+  ToolCallStatus,
   TpsSampleRow,
 } from "../shared/types.ts"
 
@@ -71,6 +73,53 @@ function recordValue(value: unknown, key: string) {
   if (!isRecord(value)) return undefined
   if (!Object.prototype.hasOwnProperty.call(value, key)) return undefined
   return value[key]
+}
+
+function stringRecordValue(value: unknown, key: string) {
+  const next = recordValue(value, key)
+  return typeof next === "string" ? next : undefined
+}
+
+function outputHasError(value: unknown): boolean {
+  const error = recordValue(value, "error")
+  if (typeof error === "boolean") return error
+  if (typeof error === "string") return error.trim().length > 0
+
+  const isError = recordValue(value, "isError")
+  if (typeof isError === "boolean") return isError
+
+  const status = recordValue(value, "status")
+  if (typeof status === "string") return status.trim().toLowerCase() === "error"
+
+  const metadata = recordValue(value, "metadata")
+  const metadataError = recordValue(metadata, "error")
+  if (typeof metadataError === "boolean") return metadataError
+  if (typeof metadataError === "string") return metadataError.trim().length > 0
+
+  return false
+}
+
+function toolCallRow(input: {
+  recordedAtMs: number
+  sessionID: string
+  messageID: string
+  toolCallID: string
+  toolName: string | undefined
+  provider: string | undefined
+  model: string | undefined
+  status: ToolCallStatus
+}): ToolCallRow {
+  return {
+    recordedAt: new Date(input.recordedAtMs).toISOString(),
+    recordedAtMs: input.recordedAtMs,
+    sessionID: input.sessionID,
+    messageID: knownValue(input.messageID),
+    toolCallID: knownValue(input.toolCallID),
+    toolName: knownValue(input.toolName),
+    provider: knownValue(input.provider),
+    model: knownValue(input.model),
+    status: input.status,
+  }
 }
 
 function normalizedThinkingLevel(value: unknown): string | undefined {
@@ -244,7 +293,10 @@ export const OcTokenInspectorServer: Plugin = async () => {
   let pendingRows: TokenEventRow[] = []
   let pendingTpsRows: TpsSampleRow[] = []
   let pendingInfoUpdates: MessageInfoUpdate[] = []
+  let pendingToolRows: ToolCallRow[] = []
   const messageInfoByID: Record<string, MessageInfo> = {}
+  const latestAssistantMessageBySession: Record<string, string> = {}
+  const latestAssistantInfoBySession: Record<string, MessageInfo> = {}
   const messagesWithStepRows = new Set<string>()
   const messageTimingByID: Record<string, MessageTiming> = {}
   const serverMessagesBySession: Record<string, ServerMessageInfo[]> = {}
@@ -257,15 +309,17 @@ export const OcTokenInspectorServer: Plugin = async () => {
     const infoUpdates = sessionID
       ? pendingInfoUpdates.filter((update) => update.info.sessionID === sessionID)
       : pendingInfoUpdates
-    if (rows.length === 0 && tpsRows.length === 0 && infoUpdates.length === 0) return
+    const toolRows = sessionID ? pendingToolRows.filter((row) => row.sessionID === sessionID) : pendingToolRows
+    if (rows.length === 0 && tpsRows.length === 0 && infoUpdates.length === 0 && toolRows.length === 0) return
 
     try {
-      storage.flush(rows, tpsRows, infoUpdates)
+      storage.flush(rows, tpsRows, infoUpdates, toolRows)
       pendingRows = sessionID ? pendingRows.filter((row) => row.sessionID !== sessionID) : []
       pendingTpsRows = sessionID ? pendingTpsRows.filter((row) => row.sessionID !== sessionID) : []
       pendingInfoUpdates = sessionID
         ? pendingInfoUpdates.filter((update) => update.info.sessionID !== sessionID)
         : []
+      pendingToolRows = sessionID ? pendingToolRows.filter((row) => row.sessionID !== sessionID) : []
     } catch (err) {
       console.error("oc-tokeninspector-server: flush failed:", err)
     }
@@ -319,6 +373,25 @@ export const OcTokenInspectorServer: Plugin = async () => {
       ...pendingTpsRows.filter((item) => item.sessionID !== row.sessionID || item.messageID !== row.messageID),
       row,
     ]
+  }
+
+  const queueToolCall = (row: ToolCallRow) => {
+    pendingToolRows = [
+      ...pendingToolRows.filter(
+        (item) => item.sessionID !== row.sessionID || item.toolCallID !== row.toolCallID || item.status !== row.status,
+      ),
+      row,
+    ]
+  }
+
+  const toolProviderInfo = (sessionID: string) => latestAssistantInfoBySession[sessionID]
+
+  const messageIDForToolCall = (input: unknown) => {
+    const sessionID = stringRecordValue(input, "sessionID")
+    const explicit = stringRecordValue(input, "messageID") ?? stringRecordValue(input, "messageId")
+    if (explicit) return explicit
+    if (sessionID) return latestAssistantMessageBySession[sessionID] ?? stringRecordValue(input, "callID") ?? stringRecordValue(input, "callId") ?? UNKNOWN_VALUE
+    return stringRecordValue(input, "callID") ?? stringRecordValue(input, "callId") ?? UNKNOWN_VALUE
   }
 
   const queueSessionFallbacks = (sessionID: string) => {
@@ -380,6 +453,40 @@ export const OcTokenInspectorServer: Plugin = async () => {
         console.error("oc-tokeninspector-server: request insert failed:", err)
       }
     },
+    "tool.execute.before": async (input) => {
+      const providerInfo = toolProviderInfo(input.sessionID)
+      const callID = knownValue(input.callID)
+      queueToolCall(
+        toolCallRow({
+          recordedAtMs: Date.now(),
+          sessionID: input.sessionID,
+          messageID: messageIDForToolCall(input),
+          toolCallID: callID,
+          toolName: input.tool,
+          provider: providerInfo?.provider,
+          model: providerInfo?.model,
+          status: "started",
+        }),
+      )
+      flushRows(input.sessionID)
+    },
+    "tool.execute.after": async (input, output) => {
+      const providerInfo = toolProviderInfo(input.sessionID)
+      const callID = knownValue(input.callID)
+      queueToolCall(
+        toolCallRow({
+          recordedAtMs: Date.now(),
+          sessionID: input.sessionID,
+          messageID: messageIDForToolCall(input),
+          toolCallID: callID,
+          toolName: input.tool,
+          provider: providerInfo?.provider,
+          model: providerInfo?.model,
+          status: outputHasError(output) ? "error" : "completed",
+        }),
+      )
+      flushRows(input.sessionID)
+    },
     event: async ({ event }) => {
       switch (event.type) {
         case "message.updated": {
@@ -408,6 +515,8 @@ export const OcTokenInspectorServer: Plugin = async () => {
             provider: knownValue(info.providerID),
             model: knownValue(info.modelID),
           }
+          latestAssistantMessageBySession[event.properties.sessionID] = info.id
+          latestAssistantInfoBySession[event.properties.sessionID] = messageInfo
           updateMessageInfo(info.id, messageInfo)
 
           const completedAt = info.time.completed
@@ -511,6 +620,8 @@ export const OcTokenInspectorServer: Plugin = async () => {
           queueSessionFallbacks(event.properties.sessionID)
           flushRows(event.properties.sessionID)
           delete serverMessagesBySession[event.properties.sessionID]
+          delete latestAssistantMessageBySession[event.properties.sessionID]
+          delete latestAssistantInfoBySession[event.properties.sessionID]
           for (const key of Object.keys(attemptsByKey)) {
             if (key.startsWith(`${event.properties.sessionID}\u0000`)) delete attemptsByKey[key]
           }

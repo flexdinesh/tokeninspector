@@ -67,6 +67,27 @@ CREATE TABLE IF NOT EXISTS pi_llm_requests (
 CREATE INDEX IF NOT EXISTS pi_llm_requests_recorded_at_ms_idx ON pi_llm_requests (recorded_at_ms);
 CREATE INDEX IF NOT EXISTS pi_llm_requests_session_time_idx ON pi_llm_requests (session_id, recorded_at_ms);
 CREATE INDEX IF NOT EXISTS pi_llm_requests_provider_model_time_idx ON pi_llm_requests (provider, model, recorded_at_ms);
+
+CREATE TABLE IF NOT EXISTS pi_tool_calls (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  recorded_at TEXT NOT NULL,
+  recorded_at_ms INTEGER NOT NULL,
+  session_id TEXT NOT NULL,
+  message_id TEXT NOT NULL,
+  tool_call_id TEXT NOT NULL,
+  tool_name TEXT NOT NULL DEFAULT 'unknown',
+  provider TEXT NOT NULL DEFAULT 'unknown',
+  model TEXT NOT NULL DEFAULT 'unknown',
+  status TEXT NOT NULL CHECK (status IN ('started', 'completed', 'error')),
+  UNIQUE(session_id, tool_call_id, status)
+);
+
+CREATE INDEX IF NOT EXISTS pi_tool_calls_recorded_at_ms_idx ON pi_tool_calls (recorded_at_ms);
+CREATE INDEX IF NOT EXISTS pi_tool_calls_session_time_idx ON pi_tool_calls (session_id, recorded_at_ms);
+CREATE INDEX IF NOT EXISTS pi_tool_calls_provider_model_time_idx ON pi_tool_calls (provider, model, recorded_at_ms);
+CREATE INDEX IF NOT EXISTS pi_tool_calls_tool_name_time_idx ON pi_tool_calls (tool_name, recorded_at_ms);
+
+PRAGMA user_version = 2;
 `;
 
 // ── Config ──────────────────────────────────────────────────────────────────
@@ -187,9 +208,11 @@ let dbInitFailed = false
 let insertTokenEvent: ReturnType<DB["prepare"]> | undefined
 let insertTpsSample: ReturnType<DB["prepare"]> | undefined
 let insertRequest: ReturnType<DB["prepare"]> | undefined
+let insertToolCall: ReturnType<DB["prepare"]> | undefined
 let pruneTokenEvents: ReturnType<DB["prepare"]> | undefined
 let pruneTpsSamples: ReturnType<DB["prepare"]> | undefined
 let pruneRequests: ReturnType<DB["prepare"]> | undefined
+let pruneToolCalls: ReturnType<DB["prepare"]> | undefined
 let lastPruneKey = ""
 
 function initDb(): boolean {
@@ -228,9 +251,17 @@ function initDb(): boolean {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `)
 
+    insertToolCall = db.prepare(`
+      INSERT OR IGNORE INTO pi_tool_calls (
+        recorded_at, recorded_at_ms, session_id, message_id,
+        tool_call_id, tool_name, provider, model, status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `)
+
     pruneTokenEvents = db.prepare("DELETE FROM pi_token_events WHERE recorded_at_ms < ?")
     pruneTpsSamples = db.prepare("DELETE FROM pi_tps_samples WHERE recorded_at_ms < ?")
     pruneRequests = db.prepare("DELETE FROM pi_llm_requests WHERE recorded_at_ms < ?")
+    pruneToolCalls = db.prepare("DELETE FROM pi_tool_calls WHERE recorded_at_ms < ?")
 
     return true
   } catch (err) {
@@ -252,6 +283,39 @@ function pruneDaily() {
   pruneTokenEvents?.run(cutoff)
   pruneTpsSamples?.run(cutoff)
   pruneRequests?.run(cutoff)
+  pruneToolCalls?.run(cutoff)
+}
+
+function usageNumber(usage: unknown, key: string): number {
+  const value = recordValue(usage, key)
+  return typeof value === "number" && Number.isFinite(value) ? value : 0
+}
+
+function insertToolCallRow(input: {
+  recordedAtMs: number
+  sessionId: string
+  messageId: string
+  toolCallId: string
+  toolName: string
+  provider: string
+  model: string
+  status: "started" | "completed" | "error"
+}) {
+  try {
+    insertToolCall?.run([
+      new Date(input.recordedAtMs).toISOString(),
+      input.recordedAtMs,
+      input.sessionId,
+      input.messageId,
+      input.toolCallId,
+      input.toolName,
+      input.provider,
+      input.model,
+      input.status,
+    ])
+  } catch (err) {
+    console.error("pi-tokeninspector: tool call insert failed:", err)
+  }
 }
 
 // ── Event handlers ───────────────────────────────────────────────────────────
@@ -293,7 +357,7 @@ export default function (pi: ExtensionAPI) {
 
     // Record request attempt
     state.turnSeq++
-    state.currentTurnId = String(state.turnSeq)
+    state.currentTurnId = `${sessionId}:${state.turnSeq}`
     const recordedAtMs = Date.now()
 
     try {
@@ -330,6 +394,52 @@ export default function (pi: ExtensionAPI) {
     state.lastTokenAt = now
   })
 
+  pi.on("tool_execution_start", async (event, ctx) => {
+    if (!initDb()) return
+
+    const sessionId = ctx.sessionManager.getSessionId()
+    if (!sessionId) return
+
+    const state = getOrCreateState(sessionId)
+    const messageId = state.currentTurnId || String(state.turnSeq)
+    const recordedAtMs = Date.now()
+
+    insertToolCallRow({
+      recordedAtMs,
+      sessionId,
+      messageId,
+      toolCallId: knownValue(event.toolCallId),
+      toolName: knownValue(event.toolName),
+      provider: state.provider,
+      model: state.model,
+      status: "started",
+    })
+  })
+
+  pi.on("tool_execution_end", async (event, ctx) => {
+    if (!initDb()) return
+
+    const sessionId = ctx.sessionManager.getSessionId()
+    if (!sessionId) return
+
+    const state = getOrCreateState(sessionId)
+    const messageId = state.currentTurnId || String(state.turnSeq)
+    const recordedAtMs = Date.now()
+
+    insertToolCallRow({
+      recordedAtMs,
+      sessionId,
+      messageId,
+      toolCallId: knownValue(event.toolCallId),
+      toolName: knownValue(event.toolName),
+      provider: state.provider,
+      model: state.model,
+      status: event.isError ? "error" : "completed",
+    })
+
+    pruneDaily()
+  })
+
   pi.on("message_end", async (event, ctx) => {
     if (!initDb()) return
 
@@ -348,17 +458,18 @@ export default function (pi: ExtensionAPI) {
     state.provider = provider
     state.model = model
 
-    const usage = (msg as any).usage
+    const usage = recordValue(msg, "usage")
     if (!usage) return
 
     const recordedAtMs = Date.now()
     const recordedAt = new Date(recordedAtMs).toISOString()
 
-    const inputTokens = Number(usage.input) || 0
-    const outputTokens = Number(usage.output) || 0
-    const cacheRead = Number(usage.cacheRead) || 0
-    const cacheWrite = Number(usage.cacheWrite) || 0
-    const totalTokens = Number(usage.totalTokens) || (inputTokens + outputTokens + cacheRead + cacheWrite)
+    const inputTokens = usageNumber(usage, "input")
+    const outputTokens = usageNumber(usage, "output")
+    const cacheRead = usageNumber(usage, "cacheRead")
+    const cacheWrite = usageNumber(usage, "cacheWrite")
+    const usageTotalTokens = usageNumber(usage, "totalTokens")
+    const totalTokens = usageTotalTokens > 0 ? usageTotalTokens : inputTokens + outputTokens + cacheRead + cacheWrite
     const reasoningTokens = 0 // Pi does not expose reasoning tokens separately
 
     // Write token event
@@ -406,9 +517,11 @@ export default function (pi: ExtensionAPI) {
     insertTokenEvent = undefined
     insertTpsSample = undefined
     insertRequest = undefined
+    insertToolCall = undefined
     pruneTokenEvents = undefined
     pruneTpsSamples = undefined
     pruneRequests = undefined
+    pruneToolCalls = undefined
     dbInitFailed = false
     lastPruneKey = ""
     sessionStates.clear()

@@ -49,5 +49,5 @@ bun build plugins/opencode-server/oc-tokeninspector-server.ts --target=bun --out
 ```sh
 cd cli
 go test ./...
-go build -o tokeninspector-cli .
+go build -o tokeninspector-cli ./cmd/tokeninspector-cli
 ```

@@ -8,6 +8,7 @@ import type {
   TokenEventRow,
   TokenEventSource,
   TokenStorage,
+  ToolCallRow,
   TpsSampleRow,
   WriterResponse,
 } from "./types.ts"
@@ -25,6 +26,7 @@ type FlushMessage = {
   tokenRows: TokenEventRow[]
   tpsRows: TpsSampleRow[]
   infoUpdates: MessageInfoUpdate[]
+  toolRows: ToolCallRow[]
 }
 
 type CloseMessage = {
@@ -144,8 +146,32 @@ async function createTokenStorage(dbPath: string, retentionDays: number): Promis
       $tokensPerSecond
     )
   `)
+  const insertToolCall = db.prepare(`
+    INSERT OR IGNORE INTO oc_tool_calls (
+      recorded_at,
+      recorded_at_ms,
+      session_id,
+      message_id,
+      tool_call_id,
+      tool_name,
+      provider,
+      model,
+      status
+    ) VALUES (
+      $recordedAt,
+      $recordedAtMs,
+      $sessionID,
+      $messageID,
+      $toolCallID,
+      $toolName,
+      $provider,
+      $model,
+      $status
+    )
+  `)
   const pruneEvents = db.prepare("DELETE FROM oc_token_events WHERE recorded_at_ms < $cutoff")
   const pruneTpsSamples = db.prepare("DELETE FROM oc_tps_samples WHERE recorded_at_ms < $cutoff")
+  const pruneToolCalls = db.prepare("DELETE FROM oc_tool_calls WHERE recorded_at_ms < $cutoff")
   const insertRows = db.transaction((rows: TokenEventRow[]) => {
     for (const row of rows) {
       if (row.source === "step-finish") {
@@ -189,6 +215,21 @@ async function createTokenStorage(dbPath: string, retentionDays: number): Promis
       })
     }
   })
+  const insertToolRows = db.transaction((rows: ToolCallRow[]) => {
+    for (const row of rows) {
+      insertToolCall.run({
+        $recordedAt: row.recordedAt,
+        $recordedAtMs: row.recordedAtMs,
+        $sessionID: row.sessionID,
+        $messageID: row.messageID,
+        $toolCallID: row.toolCallID,
+        $toolName: row.toolName,
+        $provider: row.provider,
+        $model: row.model,
+        $status: row.status,
+      })
+    }
+  })
   const updateInfo = db.transaction((messageID: string, info: MessageInfo) => {
     updateEventInfo.run({
       $messageID: messageID,
@@ -214,14 +255,16 @@ async function createTokenStorage(dbPath: string, retentionDays: number): Promis
     const cutoff = Date.now() - retentionDays * DAY_MS
     pruneEvents.run({ $cutoff: cutoff })
     pruneTpsSamples.run({ $cutoff: cutoff })
+    pruneToolCalls.run({ $cutoff: cutoff })
   }
 
   pruneDaily()
 
   return {
-    flush(tokenRows, tpsRows, infoUpdates) {
+    flush(tokenRows, tpsRows, infoUpdates, toolRows) {
       if (tokenRows.length > 0) insertRows(tokenRows)
       if (tpsRows.length > 0) insertTpsRows(tpsRows)
+      if (toolRows.length > 0) insertToolRows(toolRows)
       for (const update of infoUpdates) {
         updateInfo(update.messageID, update.info)
       }
@@ -256,7 +299,7 @@ self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
       return
     }
     if (message.type === "flush") {
-      storage?.flush(message.tokenRows, message.tpsRows, message.infoUpdates)
+      storage?.flush(message.tokenRows, message.tpsRows, message.infoUpdates, message.toolRows)
       post({ type: "flushed" })
       return
     }

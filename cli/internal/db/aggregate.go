@@ -37,6 +37,9 @@ type Row struct {
 	TpsMedian        float64
 	Requests         int64
 	Retries          int64
+	ToolName         string
+	ToolCalls        int64
+	ToolErrors       int64
 	ThinkingLevels   string
 	LatestAtMs       int64
 }
@@ -48,6 +51,7 @@ type rowKey struct {
 	sessionID string
 	provider  string
 	model     string
+	toolName  string
 }
 
 const (
@@ -78,6 +82,22 @@ func groupByAliases(g GroupBy) string {
 	}
 }
 
+func groupAliasesWithTool(g GroupBy, harness string, includeToolName bool) string {
+	base := groupAliases(g, harness)
+	if includeToolName {
+		return base + fmt.Sprintf(", %s", ColToolName)
+	}
+	return base
+}
+
+func groupByAliasesWithTool(g GroupBy, includeToolName bool) string {
+	base := groupByAliases(g)
+	if includeToolName {
+		return base + ", tool_name"
+	}
+	return base
+}
+
 func partitionBy(g GroupBy) string {
 	switch g {
 	case GroupByDayHour:
@@ -92,11 +112,11 @@ func partitionBy(g GroupBy) string {
 func scanKey(row *Row, g GroupBy) rowKey {
 	switch g {
 	case GroupByDayHour:
-		return rowKey{harness: row.Harness, day: row.Day, hour: row.Hour, provider: row.Provider, model: row.Model}
+		return rowKey{harness: row.Harness, day: row.Day, hour: row.Hour, provider: row.Provider, model: row.Model, toolName: row.ToolName}
 	case GroupByDaySession:
-		return rowKey{harness: row.Harness, day: row.Day, sessionID: row.SessionID, provider: row.Provider, model: row.Model}
+		return rowKey{harness: row.Harness, day: row.Day, sessionID: row.SessionID, provider: row.Provider, model: row.Model, toolName: row.ToolName}
 	default:
-		return rowKey{harness: row.Harness, day: row.Day, provider: row.Provider, model: row.Model}
+		return rowKey{harness: row.Harness, day: row.Day, provider: row.Provider, model: row.Model, toolName: row.ToolName}
 	}
 }
 
@@ -183,6 +203,36 @@ func scanRequestRow(rows *sql.Rows, g GroupBy) (*Row, error) {
 		Provider: provider, Model: model,
 		Requests: requests, Retries: retries,
 		ThinkingLevels: thinking.String,
+		LatestAtMs:     latestAtMs,
+	}, nil
+}
+
+func scanToolCallRow(rows *sql.Rows, g GroupBy, includeToolName bool) (*Row, error) {
+	var day, provider, model string
+	var hour, sessionID, harness, toolName string
+	var calls, errors, latestAtMs int64
+
+	var scanArgs []any
+	switch g {
+	case GroupByDayHour:
+		scanArgs = []any{&day, &hour, &provider, &model, &harness}
+	case GroupByDaySession:
+		scanArgs = []any{&day, &sessionID, &provider, &model, &harness}
+	default:
+		scanArgs = []any{&day, &provider, &model, &harness}
+	}
+	if includeToolName {
+		scanArgs = append(scanArgs, &toolName)
+	}
+	scanArgs = append(scanArgs, &calls, &errors, &latestAtMs)
+
+	if err := rows.Scan(scanArgs...); err != nil {
+		return nil, err
+	}
+	return &Row{
+		Harness: harness, Day: day, Hour: hour, SessionID: sessionID,
+		Provider: provider, Model: model,
+		ToolName: toolName, ToolCalls: calls, ToolErrors: errors,
 		LatestAtMs: latestAtMs,
 	}, nil
 }
@@ -210,6 +260,8 @@ func mergeRow(result map[rowKey]*Row, r *Row, g GroupBy) {
 	}
 	existing.Requests += r.Requests
 	existing.Retries += r.Retries
+	existing.ToolCalls += r.ToolCalls
+	existing.ToolErrors += r.ToolErrors
 	if r.ThinkingLevels != "" {
 		if existing.ThinkingLevels != "" {
 			existing.ThinkingLevels = mergeThinkingLevels(existing.ThinkingLevels, r.ThinkingLevels)
@@ -302,11 +354,17 @@ func queryTokenEvents(ctx context.Context, db *sql.DB, f Filter, g GroupBy, tabl
 func aggregateTokenEvents(ctx context.Context, db *sql.DB, f Filter, g GroupBy) (map[rowKey]*Row, error) {
 	result := make(map[rowKey]*Row)
 
-	if err := queryTokenEvents(ctx, db, f, g, TableTokenEvents, "oc", result); err != nil {
+	exists, err := tableExists(ctx, db, TableTokenEvents)
+	if err != nil {
 		return nil, err
 	}
+	if exists {
+		if err := queryTokenEvents(ctx, db, f, g, TableTokenEvents, "oc", result); err != nil {
+			return nil, err
+		}
+	}
 
-	exists, err := tableExists(ctx, db, TablePiTokenEvents)
+	exists, err = tableExists(ctx, db, TablePiTokenEvents)
 	if err != nil {
 		return nil, err
 	}
@@ -376,11 +434,13 @@ func queryTpsSamples(ctx context.Context, db *sql.DB, f Filter, g GroupBy, table
 // aggregateTpsSamples queries oc_tps_samples and pi_tps_samples with SQL-side GROUP BY and median via window CTE.
 func aggregateTpsSamples(ctx context.Context, db *sql.DB, f Filter, g GroupBy, result map[rowKey]*Row) error {
 	exists, err := tableExists(ctx, db, TableTpsSamples)
-	if err != nil || !exists {
+	if err != nil {
 		return err
 	}
-	if err := queryTpsSamples(ctx, db, f, g, TableTpsSamples, "oc", result); err != nil {
-		return err
+	if exists {
+		if err := queryTpsSamples(ctx, db, f, g, TableTpsSamples, "oc", result); err != nil {
+			return err
+		}
 	}
 
 	exists, err = tableExists(ctx, db, TablePiTpsSamples)
@@ -438,11 +498,13 @@ func queryLLMRequests(ctx context.Context, db *sql.DB, f Filter, g GroupBy, tabl
 // aggregateLLMRequests queries oc_llm_requests and pi_llm_requests with SQL-side COUNT grouping.
 func aggregateLLMRequests(ctx context.Context, db *sql.DB, f Filter, g GroupBy, result map[rowKey]*Row) error {
 	exists, err := tableExists(ctx, db, TableLLMRequests)
-	if err != nil || !exists {
+	if err != nil {
 		return err
 	}
-	if err := queryLLMRequests(ctx, db, f, g, TableLLMRequests, "oc", result); err != nil {
-		return err
+	if exists {
+		if err := queryLLMRequests(ctx, db, f, g, TableLLMRequests, "oc", result); err != nil {
+			return err
+		}
 	}
 
 	exists, err = tableExists(ctx, db, TablePiLLMRequests)
@@ -451,6 +513,65 @@ func aggregateLLMRequests(ctx context.Context, db *sql.DB, f Filter, g GroupBy, 
 	}
 	if exists {
 		if err := queryLLMRequests(ctx, db, f, g, TablePiLLMRequests, "pi", result); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// queryToolCalls aggregates tool call lifecycle rows from a single table.
+func queryToolCalls(ctx context.Context, db *sql.DB, f Filter, g GroupBy, table, harness string, includeToolName bool, result map[rowKey]*Row) error {
+	whereClause, args := buildWhereClause(f)
+
+	query := fmt.Sprintf(`
+		SELECT %s,
+			SUM(CASE WHEN %s = 'started' THEN 1 ELSE 0 END) as tool_calls,
+			SUM(CASE WHEN %s = 'error' THEN 1 ELSE 0 END) as tool_errors,
+			MAX(%s) as latest_at_ms
+		FROM %s
+		%s
+		GROUP BY %s
+	`,
+		groupAliasesWithTool(g, harness, includeToolName),
+		ColStatus, ColStatus, ColRecordedAtMs,
+		table, whereClause, groupByAliasesWithTool(g, includeToolName),
+	)
+
+	rows, err := db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		r, err := scanToolCallRow(rows, g, includeToolName)
+		if err != nil {
+			return err
+		}
+		mergeRow(result, r, g)
+	}
+	return rows.Err()
+}
+
+// aggregateToolCalls queries oc_tool_calls and pi_tool_calls with SQL-side COUNT grouping.
+func aggregateToolCalls(ctx context.Context, db *sql.DB, f Filter, g GroupBy, result map[rowKey]*Row, includeToolName bool) error {
+	exists, err := tableExists(ctx, db, TableToolCalls)
+	if err != nil {
+		return err
+	}
+	if exists {
+		if err := queryToolCalls(ctx, db, f, g, TableToolCalls, "oc", includeToolName, result); err != nil {
+			return err
+		}
+	}
+
+	exists, err = tableExists(ctx, db, TablePiToolCalls)
+	if err != nil {
+		return err
+	}
+	if exists {
+		if err := queryToolCalls(ctx, db, f, g, TablePiToolCalls, "pi", includeToolName, result); err != nil {
 			return err
 		}
 	}
@@ -467,7 +588,7 @@ func tableExists(ctx context.Context, db *sql.DB, name string) (bool, error) {
 	return count > 0, nil
 }
 
-// Aggregate queries all three table families with SQL-side GROUP BY and merges by group key.
+// Aggregate queries token, TPS, request, and tool-call table families with SQL-side GROUP BY and merges by group key.
 func Aggregate(ctx context.Context, db *sql.DB, f Filter, g GroupBy) ([]Row, error) {
 	result, err := aggregateTokenEvents(ctx, db, f, g)
 	if err != nil {
@@ -482,56 +603,75 @@ func Aggregate(ctx context.Context, db *sql.DB, f Filter, g GroupBy) ([]Row, err
 		return nil, err
 	}
 
+	if err := aggregateToolCalls(ctx, db, f, g, result, false); err != nil {
+		return nil, err
+	}
+
 	rows := make([]Row, 0, len(result))
 	for _, r := range result {
 		rows = append(rows, *r)
 	}
 
 	sort.Slice(rows, func(i, j int) bool {
-		switch g {
-		case GroupByDayHour:
-			if rows[i].Day != rows[j].Day {
-				return rows[i].Day > rows[j].Day
-			}
-			if rows[i].Hour != rows[j].Hour {
-				return rows[i].Hour > rows[j].Hour
-			}
-			if rows[i].Harness != rows[j].Harness {
-				return rows[i].Harness < rows[j].Harness
-			}
-			if rows[i].Provider != rows[j].Provider {
-				return rows[i].Provider < rows[j].Provider
-			}
-			return rows[i].Model < rows[j].Model
-		case GroupByDaySession:
-			if rows[i].Harness != rows[j].Harness {
-				return rows[i].Harness < rows[j].Harness
-			}
-			if rows[i].Day != rows[j].Day {
-				return rows[i].Day > rows[j].Day
-			}
-			if rows[i].LatestAtMs != rows[j].LatestAtMs {
-				return rows[i].LatestAtMs > rows[j].LatestAtMs
-			}
-			if rows[i].SessionID != rows[j].SessionID {
-				return rows[i].SessionID < rows[j].SessionID
-			}
-			if rows[i].Provider != rows[j].Provider {
-				return rows[i].Provider < rows[j].Provider
-			}
-			return rows[i].Model < rows[j].Model
-		default: // GroupByDay
-			if rows[i].Day != rows[j].Day {
-				return rows[i].Day > rows[j].Day
-			}
-			if rows[i].Harness != rows[j].Harness {
-				return rows[i].Harness < rows[j].Harness
-			}
-			if rows[i].Provider != rows[j].Provider {
-				return rows[i].Provider < rows[j].Provider
-			}
+		if rows[i].LatestAtMs != rows[j].LatestAtMs {
+			return rows[i].LatestAtMs > rows[j].LatestAtMs
+		}
+		if rows[i].Day != rows[j].Day {
+			return rows[i].Day > rows[j].Day
+		}
+		if g == GroupByDayHour && rows[i].Hour != rows[j].Hour {
+			return rows[i].Hour > rows[j].Hour
+		}
+		if rows[i].Harness != rows[j].Harness {
+			return rows[i].Harness < rows[j].Harness
+		}
+		if g == GroupByDaySession && rows[i].SessionID != rows[j].SessionID {
+			return rows[i].SessionID < rows[j].SessionID
+		}
+		if rows[i].Provider != rows[j].Provider {
+			return rows[i].Provider < rows[j].Provider
+		}
+		return rows[i].Model < rows[j].Model
+	})
+
+	return rows, nil
+}
+
+// AggregateToolBreakdown queries tool calls grouped by the normal group key plus tool name.
+func AggregateToolBreakdown(ctx context.Context, db *sql.DB, f Filter, g GroupBy) ([]Row, error) {
+	result := make(map[rowKey]*Row)
+	if err := aggregateToolCalls(ctx, db, f, g, result, true); err != nil {
+		return nil, err
+	}
+
+	rows := make([]Row, 0, len(result))
+	for _, r := range result {
+		rows = append(rows, *r)
+	}
+
+	sort.Slice(rows, func(i, j int) bool {
+		if rows[i].LatestAtMs != rows[j].LatestAtMs {
+			return rows[i].LatestAtMs > rows[j].LatestAtMs
+		}
+		if rows[i].Day != rows[j].Day {
+			return rows[i].Day > rows[j].Day
+		}
+		if g == GroupByDayHour && rows[i].Hour != rows[j].Hour {
+			return rows[i].Hour > rows[j].Hour
+		}
+		if rows[i].Harness != rows[j].Harness {
+			return rows[i].Harness < rows[j].Harness
+		}
+		if g == GroupByDaySession && rows[i].SessionID != rows[j].SessionID {
+			return rows[i].SessionID < rows[j].SessionID
+		}
+		if rows[i].Provider != rows[j].Provider {
+			return rows[i].Provider < rows[j].Provider
+		}
+		if rows[i].Model != rows[j].Model {
 			return rows[i].Model < rows[j].Model
 		}
+		return rows[i].ToolName < rows[j].ToolName
 	})
 
 	return rows, nil

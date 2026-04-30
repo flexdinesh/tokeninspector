@@ -91,8 +91,22 @@ export type MessageInfoUpdate = {
   info: MessageInfo
 }
 
+export type ToolCallStatus = "started" | "completed" | "error"
+
+export type ToolCallRow = {
+  recordedAt: string
+  recordedAtMs: number
+  sessionID: string
+  messageID: string
+  toolCallID: string
+  toolName: string
+  provider: string
+  model: string
+  status: ToolCallStatus
+}
+
 export type TokenStorage = {
-  flush: (tokenRows: TokenEventRow[], tpsRows: TpsSampleRow[], infoUpdates: MessageInfoUpdate[]) => void
+  flush: (tokenRows: TokenEventRow[], tpsRows: TpsSampleRow[], infoUpdates: MessageInfoUpdate[], toolRows: ToolCallRow[]) => void
   close: () => void
 }
 
@@ -151,6 +165,18 @@ export type PiRequestRow = {
   model: string
   attemptIndex: number
   thinkingLevel: string
+}
+
+export type PiToolCallRow = {
+  recordedAt: string
+  recordedAtMs: number
+  sessionID: string
+  messageID: string
+  toolCallID: string
+  toolName: string
+  provider: string
+  model: string
+  status: ToolCallStatus
 }
 
 export type RequestStorage = {

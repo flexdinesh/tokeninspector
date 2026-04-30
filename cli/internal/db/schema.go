@@ -1,12 +1,14 @@
 package db
 
 const (
-	TableTokenEvents    = "oc_token_events"
-	TableTpsSamples     = "oc_tps_samples"
-	TableLLMRequests    = "oc_llm_requests"
-	TablePiTokenEvents  = "pi_token_events"
-	TablePiTpsSamples   = "pi_tps_samples"
-	TablePiLLMRequests  = "pi_llm_requests"
+	TableTokenEvents   = "oc_token_events"
+	TableTpsSamples    = "oc_tps_samples"
+	TableLLMRequests   = "oc_llm_requests"
+	TablePiTokenEvents = "pi_token_events"
+	TablePiTpsSamples  = "pi_tps_samples"
+	TablePiLLMRequests = "pi_llm_requests"
+	TableToolCalls     = "oc_tool_calls"
+	TablePiToolCalls   = "pi_tool_calls"
 )
 
 const (
@@ -31,6 +33,9 @@ const (
 	ColTpsTotalTokens   = "total_tokens"
 	ColAttemptIndex     = "attempt_index"
 	ColThinkingLevel    = "thinking_level"
+	ColToolCallID       = "tool_call_id"
+	ColToolName         = "tool_name"
+	ColStatus           = "status"
 )
 
-const SupportedSchemaVersion = 1
+const SupportedSchemaVersion = 2

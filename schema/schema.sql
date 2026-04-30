@@ -60,6 +60,25 @@ CREATE INDEX IF NOT EXISTS oc_llm_requests_recorded_at_ms_idx ON oc_llm_requests
 CREATE INDEX IF NOT EXISTS oc_llm_requests_session_time_idx ON oc_llm_requests (session_id, recorded_at_ms);
 CREATE INDEX IF NOT EXISTS oc_llm_requests_provider_model_time_idx ON oc_llm_requests (provider, model, recorded_at_ms);
 
+CREATE TABLE IF NOT EXISTS oc_tool_calls (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  recorded_at TEXT NOT NULL,
+  recorded_at_ms INTEGER NOT NULL,
+  session_id TEXT NOT NULL,
+  message_id TEXT NOT NULL,
+  tool_call_id TEXT NOT NULL,
+  tool_name TEXT NOT NULL DEFAULT 'unknown',
+  provider TEXT NOT NULL DEFAULT 'unknown',
+  model TEXT NOT NULL DEFAULT 'unknown',
+  status TEXT NOT NULL CHECK (status IN ('started', 'completed', 'error')),
+  UNIQUE(session_id, tool_call_id, status)
+);
+
+CREATE INDEX IF NOT EXISTS oc_tool_calls_recorded_at_ms_idx ON oc_tool_calls (recorded_at_ms);
+CREATE INDEX IF NOT EXISTS oc_tool_calls_session_time_idx ON oc_tool_calls (session_id, recorded_at_ms);
+CREATE INDEX IF NOT EXISTS oc_tool_calls_provider_model_time_idx ON oc_tool_calls (provider, model, recorded_at_ms);
+CREATE INDEX IF NOT EXISTS oc_tool_calls_tool_name_time_idx ON oc_tool_calls (tool_name, recorded_at_ms);
+
 CREATE TABLE IF NOT EXISTS pi_token_events (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   recorded_at TEXT NOT NULL,
@@ -117,4 +136,23 @@ CREATE INDEX IF NOT EXISTS pi_llm_requests_recorded_at_ms_idx ON pi_llm_requests
 CREATE INDEX IF NOT EXISTS pi_llm_requests_session_time_idx ON pi_llm_requests (session_id, recorded_at_ms);
 CREATE INDEX IF NOT EXISTS pi_llm_requests_provider_model_time_idx ON pi_llm_requests (provider, model, recorded_at_ms);
 
-PRAGMA user_version = 1;
+CREATE TABLE IF NOT EXISTS pi_tool_calls (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  recorded_at TEXT NOT NULL,
+  recorded_at_ms INTEGER NOT NULL,
+  session_id TEXT NOT NULL,
+  message_id TEXT NOT NULL,
+  tool_call_id TEXT NOT NULL,
+  tool_name TEXT NOT NULL DEFAULT 'unknown',
+  provider TEXT NOT NULL DEFAULT 'unknown',
+  model TEXT NOT NULL DEFAULT 'unknown',
+  status TEXT NOT NULL CHECK (status IN ('started', 'completed', 'error')),
+  UNIQUE(session_id, tool_call_id, status)
+);
+
+CREATE INDEX IF NOT EXISTS pi_tool_calls_recorded_at_ms_idx ON pi_tool_calls (recorded_at_ms);
+CREATE INDEX IF NOT EXISTS pi_tool_calls_session_time_idx ON pi_tool_calls (session_id, recorded_at_ms);
+CREATE INDEX IF NOT EXISTS pi_tool_calls_provider_model_time_idx ON pi_tool_calls (provider, model, recorded_at_ms);
+CREATE INDEX IF NOT EXISTS pi_tool_calls_tool_name_time_idx ON pi_tool_calls (tool_name, recorded_at_ms);
+
+PRAGMA user_version = 2;

@@ -31,6 +31,10 @@ TPS (tokens per second) is a first-class project metric. Do not remove persisted
 │  │ pi_token_events │  │ pi_tps_samples  │  │ pi_llm_requests │  │
 │  │  (token rows)   │  │ (throughput)    │  │ (attempts)      │  │
 │  └─────────────────┘  └─────────────────┘  └─────────────────┘  │
+│  ┌─────────────────┐  ┌─────────────────┐                       │
+│  │ oc_tool_calls   │  │ pi_tool_calls   │                       │
+│  │ (tool lifecycle)│  │ (tool lifecycle)│                       │
+│  └─────────────────┘  └─────────────────┘                       │
 └───────────────────────────────────────────────────────────────┘
          ▲
          │ reads (read-only)
@@ -117,6 +121,23 @@ One row per LLM provider request attempt.
 | `attempt_index` | `1` for initial attempt, `> 1` for retries |
 | `thinking_level` | `low`, `medium`, `high`, `xhigh`, or `unknown` |
 
+### `oc_tool_calls`
+
+One row per observed OpenCode tool-call lifecycle transition.
+
+| Column | Meaning |
+|--------|---------|
+| `recorded_at_ms` | UTC millis when the transition was observed |
+| `session_id` | Required. OpenCode session ID |
+| `message_id` | Best-effort assistant message ID; falls back to tool call ID when unavailable |
+| `tool_call_id` | OpenCode tool call ID |
+| `tool_name` | Tool name, or `unknown` if missing |
+| `provider` | Provider from latest assistant message metadata, or `unknown` |
+| `model` | Model from latest assistant message metadata, or `unknown` |
+| `status` | `started`, `completed`, or `error` |
+
+Unique on `(session_id, tool_call_id, status)`.
+
 ### `pi_token_events`
 
 One row per Pi assistant message completion.
@@ -136,6 +157,12 @@ Identical schema to `oc_tps_samples`.
 One row per Pi provider request attempt.
 
 Identical schema to `oc_llm_requests`. `attempt_index` is always `1` because Pi does not expose retry detection to extensions.
+
+### `pi_tool_calls`
+
+One row per observed Pi tool-call lifecycle transition.
+
+Identical schema to `oc_tool_calls`, using Pi `tool_execution_start` and `tool_execution_end` events. `message_id` is the synthetic Pi turn ID shared with Pi token/TPS/request rows when available.
 
 ### Schema Contract
 
@@ -196,8 +223,11 @@ Runs as an OpenCode server plugin and is the **sole writer** of OpenCode token d
   - `step-finish`: queues a true time-series token event with source `step-finish`.
 - **`message.updated`**:
   - Assistant messages queue message metadata updates: `session_id`, provider, model.
+  - Tracks latest assistant message metadata per session for best-effort tool-call attribution.
   - When a completed assistant message has no step rows, queues a `message-fallback` token row. This protects against missing `step-finish` data.
   - Completed assistant messages also queue one `oc_tps_samples` row when timing data is available. This is the durable source for CLI `tps avg`, `tps mean`, and `tps median`.
+- **`tool.execute.before`**: queues one `oc_tool_calls` row with status `started`.
+- **`tool.execute.after`**: queues one `oc_tool_calls` row with status `completed` or `error`.
 - **`session.idle`** / **`session.deleted`**: scans an in-memory message tracker for completed assistant messages, queues missing fallback rows, then flushes pending rows for that session to the writer worker. Cleans up per-session state.
 
 ### Session Lifecycle (Server Plugin)
@@ -207,20 +237,22 @@ Runs as an OpenCode server plugin and is the **sole writer** of OpenCode token d
 
 `attempt_index == 1` contributes to `requests`. `attempt_index > 1` contributes to `retries`.
 
-Limitations: counts request attempts, not confirmed HTTP success. Does not count tool network calls, MCP traffic, auth/OAuth, provider metadata lookups, plugin-owned fetches, install/update checks, or local TUI/server API calls.
+Request-tracking limitations: counts request attempts, not confirmed HTTP success. Does not count tool network calls, MCP traffic, auth/OAuth, provider metadata lookups, plugin-owned fetches, install/update checks, or local TUI/server API calls.
 
 ### Pi Extension (`plugins/pi/index.ts`)
 
-Runs as a Pi coding-agent extension. **One extension collects all data**: tokens, TPS, and requests (unlike OpenCode which splits this across TUI and server plugins).
+Runs as a Pi coding-agent extension. **One extension collects all data**: tokens, TPS, requests, and tool calls (unlike OpenCode which splits this across TUI and server plugins).
 
 - **Initialization is lazy**: DB open and schema migration are deferred to the first event that requires a write. If init fails, the extension logs to stderr and disables tracking; Pi startup is never blocked.
 - **`turn_start`**: resets per-turn timing state (`requestStartAt`, `firstTokenAt`, `lastTokenAt`).
 - **`before_provider_request`**: extracts `thinking_level` from the provider payload, captures provider/model from `ctx.model`, increments `turnSeq`, generates `currentTurnId`, writes one `pi_llm_requests` row.
 - **`message_update`** (assistant only): records `firstTokenAt` on the first streaming update and updates `lastTokenAt` on every update.
+- **`tool_execution_start`**: writes one `pi_tool_calls` row with status `started`.
+- **`tool_execution_end`**: writes one `pi_tool_calls` row with status `completed` or `error`.
 - **`message_end`** (assistant only): reads `usage` from the completed message, writes one `pi_token_events` row; computes `durationMs` = `lastTokenAt − requestStartAt`, `ttftMs` = `firstTokenAt − requestStartAt`, and `tokens_per_second`, writes one `pi_tps_samples` row.
 - **`session_shutdown`**: closes the DB connection and clears all session state.
 - `reasoning_tokens` is always `0`.
-- `message_id` is a single synthetic `currentTurnId` per turn, shared across `pi_llm_requests`, `pi_token_events`, and `pi_tps_samples` (Pi messages do not carry stable IDs).
+- `message_id` is a single synthetic `currentTurnId` per turn, shared across `pi_llm_requests`, `pi_token_events`, `pi_tps_samples`, and `pi_tool_calls` (Pi messages do not carry stable IDs).
 
 ## CLI Architecture
 
@@ -250,26 +282,29 @@ Aggregation is SQL-side for performance. The CLI queries both `oc_*` and `pi_*` 
 - **Token events**: `SUM(input_tokens, output_tokens, reasoning_tokens, cache_read_tokens, cache_write_tokens, total_tokens)` grouped by day/hour/session + provider + model + harness.
 - **TPS samples**: window CTE for median, `AVG` for mean, `SUM(total_tokens) / SUM(duration_ms)` for avg, grouped by day/hour/session + provider + model + harness.
 - **LLM requests**: `SUM(CASE WHEN attempt_index = 1 THEN 1)` for requests, `SUM(CASE WHEN attempt_index > 1 THEN 1)` for retries, grouped by day/hour/session + provider + model + harness.
+- **Tool calls**: `SUM(CASE WHEN status = 'started' THEN 1)` for tool calls and `SUM(CASE WHEN status = 'error' THEN 1)` for errors, grouped by day/hour/session + provider + model + harness. The `tool breakdown` tab additionally groups by `tool_name`. Future duration metrics are planned in [`docs/spec/tool-runtime-duration-metrics.md`](spec/tool-runtime-duration-metrics.md).
 
 The `harness` column is a literal (`'oc'` or `'pi'`) selected in the query and included in the group key. Final sort order is defined per grouping mode in the table above.
 
 ### Tabs
 
-The interactive TUI has three tabs. Only columns relevant to the active tab are rendered.
+The interactive TUI has five tabs. Only columns relevant to the active tab are rendered.
 
 | Tab | Columns |
 |-----|---------|
 | **tokens** (default) | day, [hour \| session id, thinking], harness, provider, model, input, output, reasoning, cache read, cache write, total |
 | **tps** | day, [hour \| session id, thinking], harness, provider, model, tps avg, tps mean, tps median |
 | **requests** | day, [hour \| session id, thinking], harness, provider, model, requests, retries |
+| **tool calls** | day, [hour \| session id, thinking], harness, provider, model, tool calls, errors |
+| **tool breakdown** | day, [hour \| session id, thinking], harness, provider, model, tool, tool calls, errors |
 
 ### Grouping Modes
 
 | Mode | Group Key | Sort Order |
 |------|-----------|------------|
-| `session` (default) | day, session_id, provider, model, harness | harness asc, day desc, MAX(recorded_at_ms) desc, session_id asc, provider asc, model asc |
-| `day` | day, provider, model, harness | day desc, harness asc, provider asc, model asc |
-| `hour` | day, hour, provider, model, harness | day desc, hour desc, harness asc, provider asc, model asc |
+| `session` (default) | day, session_id, provider, model, harness | MAX(recorded_at_ms) desc, day desc, harness asc, session_id asc, provider asc, model asc |
+| `day` | day, provider, model, harness | MAX(recorded_at_ms) desc, day desc, harness asc, provider asc, model asc |
+| `hour` | day, hour, provider, model, harness | MAX(recorded_at_ms) desc, day desc, hour desc, harness asc, provider asc, model asc |
 
 ### Rendering
 
@@ -324,7 +359,7 @@ Even the items below require explicit user approval before implementation. Surfa
 | Directory / File | Role |
 |-----------------|------|
 | `plugins/opencode-tui/oc-tokeninspector.tsx` | TUI plugin entry point; live display, DB queries |
-| `plugins/opencode-server/oc-tokeninspector-server.ts` | Server plugin; durable collection, LLM request tracking |
+| `plugins/opencode-server/oc-tokeninspector-server.ts` | Server plugin; durable collection, LLM request and tool-call tracking |
 | `plugins/shared/oc-tokeninspector-writer.ts` | Bun worker; SQLite writes, schema migration, pruning |
 | `plugins/shared/writer-client.ts` | Shared worker client; used by both TUI and server plugins |
 | `plugins/shared/types.ts` | Shared TypeScript types (plugin + worker + server) |
@@ -338,7 +373,7 @@ Even the items below require explicit user approval before implementation. Surfa
 | `cli/internal/db/schema.go` | Go string constants for table/column names |
 | `cli/internal/db/schema_test.go` | Go schema contract test |
 | `cli/internal/db/events.go` | `oc_token_events` query + filter builder |
-| `cli/internal/db/aggregate.go` | SQL aggregation for all three tables + merge |
+| `cli/internal/db/aggregate.go` | SQL aggregation for token, TPS, request, and tool-call tables + merge |
 | `cli/internal/cli/flags.go` | CLI flag parsing |
 | `cli/internal/cli/table.go` | Bubbletea TUI model, key handling, tab switching |
 | `cli/internal/cli/render.go` | Table rendering, formatting, compact units |
@@ -366,7 +401,7 @@ cd plugins/pi && npx tsc --noEmit --module esnext --moduleResolution node --esMo
 ```sh
 cd cli
 go test ./...
-go build -o tokeninspector-cli .
+go build -o tokeninspector-cli ./cmd/tokeninspector-cli
 ```
 
 ### Smoke Test Against Real DB

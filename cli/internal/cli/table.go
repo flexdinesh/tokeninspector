@@ -44,7 +44,7 @@ func (m interactiveModel) Init() tea.Cmd {
 
 func (m interactiveModel) reloadCmd() tea.Cmd {
 	return func() tea.Msg {
-		rows, err := loadRows(m.ctx, m.options, m.now, m.groupBy)
+		rows, err := loadRows(m.ctx, m.options, m.now, m.groupBy, m.activeTab)
 		if err != nil {
 			return reloadMsg{err: err}
 		}
@@ -91,7 +91,7 @@ func (m interactiveModel) measureHeights() interactiveModel {
 	title := titleStyle.Render(fmt.Sprintf("Token Inspector %s", m.period))
 
 	var tabs []string
-	for i := tabTokens; i <= tabRequests; i++ {
+	for i := tabTokens; i <= tabToolBreakdown; i++ {
 		label := i.String()
 		if i == m.activeTab {
 			tabs = append(tabs, activeTabStyle.Render(label))
@@ -116,7 +116,7 @@ func (m interactiveModel) measureHeights() interactiveModel {
 		inputTokens: "1000", outputTokens: "100", reasoningTokens: "10",
 		cacheReadTokens: "5", cacheWriteTokens: "1", totalTokens: "1116",
 		tpsAvg: "12.34", tpsMean: "56.78", tpsMedian: "45.67",
-		requests: "3", retries: "1",
+		requests: "3", retries: "1", toolName: "bash", toolCalls: "5", toolErrors: "1",
 	}
 	if m.groupBy == groupByHour {
 		sampleRow.hour = "12:00"
@@ -175,18 +175,20 @@ func (m interactiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.Type {
 		case tea.KeyTab:
 			m.activeTab++
-			if m.activeTab > tabRequests {
+			if m.activeTab > tabToolBreakdown {
 				m.activeTab = tabTokens
 			}
+			m.scrollOffset = 0
 			m = m.measureHeights()
-			return m, nil
+			return m, m.reloadCmd()
 		case tea.KeyShiftTab:
 			m.activeTab--
 			if m.activeTab < 0 {
-				m.activeTab = tabRequests
+				m.activeTab = tabToolBreakdown
 			}
+			m.scrollOffset = 0
 			m = m.measureHeights()
-			return m, nil
+			return m, m.reloadCmd()
 		case tea.KeyUp:
 			if m.scrollOffset > 0 {
 				m.scrollOffset--
@@ -283,10 +285,10 @@ func (m interactiveModel) handlePopupKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 var (
 	activeTabStyle = lipgloss.NewStyle().
-				Bold(true).
-				Foreground(lipgloss.Color("230")).
-				Background(lipgloss.Color("63")).
-				Padding(0, 2)
+			Bold(true).
+			Foreground(lipgloss.Color("230")).
+			Background(lipgloss.Color("63")).
+			Padding(0, 2)
 
 	inactiveTabStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("245")).
@@ -297,7 +299,7 @@ var (
 			BorderForeground(lipgloss.Color("212")).
 			Padding(1, 2)
 
-	popupTitleStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("212"))
+	popupTitleStyle  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("212"))
 	popupCursorStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("63"))
 	popupItemStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
 )
@@ -325,7 +327,7 @@ func (m interactiveModel) View() string {
 	title := titleStyle.Render(fmt.Sprintf("Token Inspector %s", m.period))
 
 	var tabs []string
-	for i := tabTokens; i <= tabRequests; i++ {
+	for i := tabTokens; i <= tabToolBreakdown; i++ {
 		label := i.String()
 		if i == m.activeTab {
 			tabs = append(tabs, activeTabStyle.Render(label))
@@ -396,7 +398,7 @@ func RunInteractive(ctx context.Context, args []string, stdout io.Writer, stderr
 	return err
 }
 
-func loadRows(ctx context.Context, options tableOptions, now time.Time, groupBy groupByMode) ([]renderRow, error) {
+func loadRows(ctx context.Context, options tableOptions, now time.Time, groupBy groupByMode, activeTab tabMode) ([]renderRow, error) {
 	start := periodStart(now, options.period)
 
 	database, err := db.Open(options.dbPath)
@@ -424,7 +426,12 @@ func loadRows(ctx context.Context, options tableOptions, now time.Time, groupBy 
 		g = db.GroupByDay
 	}
 
-	aggRows, err := db.Aggregate(ctx, database, f, g)
+	var aggRows []db.Row
+	if activeTab == tabToolBreakdown {
+		aggRows, err = db.AggregateToolBreakdown(ctx, database, f, g)
+	} else {
+		aggRows, err = db.Aggregate(ctx, database, f, g)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -450,6 +457,9 @@ func loadRows(ctx context.Context, options tableOptions, now time.Time, groupBy 
 			totalTokens:      formatTokens(r.TotalTokens),
 			requests:         formatTokens(r.Requests),
 			retries:          formatTokens(r.Retries),
+			toolName:         r.ToolName,
+			toolCalls:        formatTokens(r.ToolCalls),
+			toolErrors:       formatTokens(r.ToolErrors),
 		}
 	}
 	return result, nil

@@ -1,6 +1,6 @@
 # tokeninspector
 
-Local OpenCode token usage tools. The server plugin writes token/TPS/request data to SQLite via a worker thread; the TUI plugin queries the DB for live display; the Go CLI reads aggregate tables.
+Local OpenCode token usage tools. The server plugin writes token/TPS/request/tool-call data to SQLite via a worker thread; the TUI plugin queries the DB for live display; the Go CLI reads aggregate tables.
 
 See [`docs/design.md`](docs/design.md) for full architecture, schema contract, event flow, and invariants.
 
@@ -22,7 +22,7 @@ See [`docs/design.md`](docs/design.md) for full architecture, schema contract, e
 |-------------|-----|
 | `schema/schema.sql` | `bun run scripts/check-schema.ts` |
 | Any `.ts` in `plugins/` | Plugin smoke builds (see below) |
-| Any `.go` in `cli/` | `cd cli && go test ./... && go build -o tokeninspector-cli .` |
+| Any `.go` in `cli/` | `cd cli && go test ./... && go build -o tokeninspector-cli ./cmd/tokeninspector-cli` |
 | Storage, schema, events, SQL, aggregation, rendering, or tests | Update **both** plugin and CLI; run all of the above |
 
 > ⚠️ **Schema changes are user-approved only.** Never modify `schema/schema.sql` without explicit user approval, even for additive changes. Always explain the rationale and ask first.
@@ -40,7 +40,7 @@ bun build plugins/opencode-server/oc-tokeninspector-server.ts --target=bun --out
 ```sh
 cd cli
 go test ./...
-go build -o tokeninspector-cli .
+go build -o tokeninspector-cli ./cmd/tokeninspector-cli
 ```
 
 ### Smoke test against real DB
@@ -102,6 +102,8 @@ npm install
 
 The Pi extension writes to the same DB as the OpenCode plugins (`~/.local/state/opencode/oc-tps.sqlite`) but stores data in the `pi_*` table family. The CLI reads both `oc_*` and `pi_*` tables and shows a `harness` column (`oc` or `pi`) to distinguish sources.
 
+Tool calls are tracked as lifecycle rows (`started`, `completed`, `error`). The CLI `tool calls` tab shows started-call counts plus error counts per normal group; `tool breakdown` adds per-tool grouping.
+
 ## CLI Usage
 
 ```sh
@@ -118,7 +120,7 @@ tokeninspector-cli --db-path ~/.local/state/opencode/oc-tps.sqlite --all-time --
 
 Interactive keys:
 
-- `tab` / `shift+tab` — switch tabs (tokens, tps, requests)
+- `tab` / `shift+tab` — switch tabs (tokens, tps, requests, tool calls, tool breakdown)
 - `g` — open grouping popup
 - `↑/↓` / `j/k` — scroll or move cursor in popup
 - `space` / `enter` — select grouping mode

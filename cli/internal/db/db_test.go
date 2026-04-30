@@ -154,6 +154,29 @@ func newTestDB(t *testing.T) *sql.DB {
 	)); err != nil {
 		t.Fatal(err)
 	}
+	for _, tableName := range []string{TableToolCalls, TablePiToolCalls} {
+		if _, err := db.Exec(fmt.Sprintf(`
+			CREATE TABLE %s (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				recorded_at TEXT NOT NULL,
+				%s INTEGER NOT NULL,
+				%s TEXT NOT NULL,
+				%s TEXT NOT NULL,
+				%s TEXT NOT NULL,
+				%s TEXT NOT NULL DEFAULT 'unknown',
+				%s TEXT NOT NULL DEFAULT 'unknown',
+				%s TEXT NOT NULL DEFAULT 'unknown',
+				%s TEXT NOT NULL,
+				UNIQUE(%s, %s, %s)
+			)
+		`,
+			tableName,
+			ColRecordedAtMs, ColSessionID, ColMessageID, ColToolCallID, ColToolName,
+			ColProvider, ColModel, ColStatus, ColSessionID, ColToolCallID, ColStatus,
+		)); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if _, err := db.Exec(fmt.Sprintf("PRAGMA user_version = %d", SupportedSchemaVersion)); err != nil {
 		t.Fatal(err)
 	}
@@ -250,6 +273,19 @@ func insertPiRequest(t *testing.T, db *sql.DB, recordedAtMs int64, sessionID, pr
 		ColRecordedAtMs, ColSessionID, ColMessageID, ColProvider, ColModel,
 		ColAttemptIndex, ColThinkingLevel,
 	), recordedAt, recordedAtMs, sessionID, nextMsgID(), provider, model, attemptIndex, thinkingLevel)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func insertToolCall(t *testing.T, db *sql.DB, table string, recordedAtMs int64, sessionID, provider, model, toolName, status string) {
+	t.Helper()
+	recordedAt := time.UnixMilli(recordedAtMs).UTC().Format(time.RFC3339)
+	_, err := db.Exec(fmt.Sprintf(
+		"INSERT INTO %s (recorded_at, %s, %s, %s, %s, %s, %s, %s, %s) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		table,
+		ColRecordedAtMs, ColSessionID, ColMessageID, ColToolCallID, ColToolName, ColProvider, ColModel, ColStatus,
+	), recordedAt, recordedAtMs, sessionID, nextMsgID(), nextMsgID(), toolName, provider, model, status)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -501,6 +537,87 @@ func TestAggregateSession(t *testing.T) {
 	}
 }
 
+func TestAggregateDailySortsLatestToOldest(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	older := time.Date(2026, 4, 24, 10, 0, 0, 0, time.Local).UnixMilli()
+	newer := time.Date(2026, 4, 24, 13, 0, 0, 0, time.Local).UnixMilli()
+
+	insertTokenEvent(t, db, older, "ses_1", "anthropic", "claude", 100, 10, 5, 20, 1, 136)
+	insertTokenEvent(t, db, newer, "ses_2", "openai", "gpt", 200, 20, 6, 30, 2, 258)
+
+	rows, err := Aggregate(context.Background(), db, Filter{
+		Start: time.Date(2026, 4, 24, 0, 0, 0, 0, time.Local),
+	}, GroupByDay)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("got %d rows, want 2", len(rows))
+	}
+	if rows[0].Provider != "openai" || rows[0].LatestAtMs != newer {
+		t.Fatalf("unexpected first row: %+v", rows[0])
+	}
+	if rows[1].Provider != "anthropic" || rows[1].LatestAtMs != older {
+		t.Fatalf("unexpected second row: %+v", rows[1])
+	}
+}
+
+func TestAggregateHourlySortsLatestToOldest(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	older := time.Date(2026, 4, 24, 13, 5, 0, 0, time.Local).UnixMilli()
+	newer := time.Date(2026, 4, 24, 13, 55, 0, 0, time.Local).UnixMilli()
+
+	insertTpsSample(t, db, older, "ses_1", "anthropic", "claude", 100, 1000, 100)
+	insertTpsSample(t, db, newer, "ses_2", "openai", "gpt", 200, 2000, 100)
+
+	rows, err := Aggregate(context.Background(), db, Filter{
+		Start: time.Date(2026, 4, 24, 0, 0, 0, 0, time.Local),
+	}, GroupByDayHour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("got %d rows, want 2", len(rows))
+	}
+	if rows[0].Provider != "openai" || rows[0].Hour != "13:00" || rows[0].LatestAtMs != newer {
+		t.Fatalf("unexpected first row: %+v", rows[0])
+	}
+	if rows[1].Provider != "anthropic" || rows[1].Hour != "13:00" || rows[1].LatestAtMs != older {
+		t.Fatalf("unexpected second row: %+v", rows[1])
+	}
+}
+
+func TestAggregateSessionSortsLatestToOldestAcrossHarnesses(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	older := time.Date(2026, 4, 24, 10, 0, 0, 0, time.Local).UnixMilli()
+	newer := time.Date(2026, 4, 24, 13, 0, 0, 0, time.Local).UnixMilli()
+
+	insertRequest(t, db, older, "ses_1", "openai", "gpt", 1, "low")
+	insertPiRequest(t, db, newer, "ses_2", "anthropic", "claude", 1, "high")
+
+	rows, err := Aggregate(context.Background(), db, Filter{
+		Start: time.Date(2026, 4, 24, 0, 0, 0, 0, time.Local),
+	}, GroupByDaySession)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("got %d rows, want 2", len(rows))
+	}
+	if rows[0].Harness != "pi" || rows[0].SessionID != "ses_2" || rows[0].LatestAtMs != newer {
+		t.Fatalf("unexpected first row: %+v", rows[0])
+	}
+	if rows[1].Harness != "oc" || rows[1].SessionID != "ses_1" || rows[1].LatestAtMs != older {
+		t.Fatalf("unexpected second row: %+v", rows[1])
+	}
+}
+
 func TestAggregateCrossHarness(t *testing.T) {
 	db := newTestDB(t)
 	defer db.Close()
@@ -554,6 +671,64 @@ func TestAggregateCrossHarness(t *testing.T) {
 	}
 	if second.Requests != 1 || second.Retries != 0 {
 		t.Fatalf("unexpected pi requests: %+v", second)
+	}
+}
+
+func TestAggregateToolCalls(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	day := time.Date(2026, 4, 24, 12, 0, 0, 0, time.Local).UnixMilli()
+	insertToolCall(t, db, TableToolCalls, day, "ses_1", "openai", "gpt", "bash", "started")
+	insertToolCall(t, db, TableToolCalls, day, "ses_1", "openai", "gpt", "bash", "error")
+	insertToolCall(t, db, TablePiToolCalls, day, "ses_2", "anthropic", "claude", "read", "started")
+	insertToolCall(t, db, TablePiToolCalls, day, "ses_2", "anthropic", "claude", "read", "completed")
+
+	rows, err := Aggregate(context.Background(), db, Filter{
+		Start: time.Date(2026, 4, 24, 0, 0, 0, 0, time.Local),
+	}, GroupByDay)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("got %d rows, want 2", len(rows))
+	}
+	if rows[0].Harness != "oc" || rows[0].ToolCalls != 1 || rows[0].ToolErrors != 1 {
+		t.Fatalf("unexpected oc tool counts: %+v", rows[0])
+	}
+	if rows[1].Harness != "pi" || rows[1].ToolCalls != 1 || rows[1].ToolErrors != 0 {
+		t.Fatalf("unexpected pi tool counts: %+v", rows[1])
+	}
+}
+
+func TestAggregateToolBreakdown(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	day := time.Date(2026, 4, 24, 12, 0, 0, 0, time.Local).UnixMilli()
+	insertToolCall(t, db, TableToolCalls, day, "ses_1", "openai", "gpt", "bash", "started")
+	insertToolCall(t, db, TableToolCalls, day, "ses_1", "openai", "gpt", "bash", "completed")
+	insertToolCall(t, db, TableToolCalls, day, "ses_1", "openai", "gpt", "read", "started")
+	insertToolCall(t, db, TableToolCalls, day, "ses_1", "openai", "gpt", "read", "error")
+
+	rows, err := AggregateToolBreakdown(context.Background(), db, Filter{
+		Start: time.Date(2026, 4, 24, 0, 0, 0, 0, time.Local),
+	}, GroupByDaySession)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("got %d rows, want 2", len(rows))
+	}
+	byTool := map[string]Row{}
+	for _, row := range rows {
+		byTool[row.ToolName] = row
+	}
+	if byTool["bash"].ToolCalls != 1 || byTool["bash"].ToolErrors != 0 {
+		t.Fatalf("unexpected bash counts: %+v", byTool["bash"])
+	}
+	if byTool["read"].ToolCalls != 1 || byTool["read"].ToolErrors != 1 {
+		t.Fatalf("unexpected read counts: %+v", byTool["read"])
 	}
 }
 

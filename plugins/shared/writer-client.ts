@@ -24,10 +24,10 @@ export function createTokenStorage(
   worker.postMessage({ type: "init", dbPath: config.dbPath, retentionDays: config.retentionDays })
 
   return {
-    flush(tokenRows, tpsRows, infoUpdates) {
+    flush(tokenRows, tpsRows, infoUpdates, toolRows) {
       if (!workerReady) return
-      if (tokenRows.length === 0 && tpsRows.length === 0 && infoUpdates.length === 0) return
-      worker.postMessage({ type: "flush", tokenRows, tpsRows, infoUpdates })
+      if (tokenRows.length === 0 && tpsRows.length === 0 && infoUpdates.length === 0 && toolRows.length === 0) return
+      worker.postMessage({ type: "flush", tokenRows, tpsRows, infoUpdates, toolRows })
     },
     close() {
       worker.postMessage({ type: "close" })

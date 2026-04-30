@@ -147,6 +147,58 @@ func TestRenderTableDailyTPS(t *testing.T) {
 	}
 }
 
+func TestRenderTableDailyToolCalls(t *testing.T) {
+	output := renderTable([]renderRow{{
+		harness:    "oc",
+		day:        "2026-04-24",
+		provider:   "openai",
+		model:      "gpt",
+		toolCalls:  "12",
+		toolErrors: "2",
+	}}, groupByNone, tabToolCalls)
+
+	golden := filepath.Join("testdata", "render_daily_tool_calls.txt")
+	if os.Getenv("UPDATE_GOLDEN") != "" {
+		if err := os.WriteFile(golden, []byte(output), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	expected, err := os.ReadFile(golden)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal([]byte(output), expected) {
+		t.Fatalf("output mismatch\ngot:\n%s\nwant:\n%s", output, expected)
+	}
+}
+
+func TestRenderTableSessionToolBreakdown(t *testing.T) {
+	output := renderTable([]renderRow{{
+		harness:    "oc",
+		day:        "2026-04-24",
+		sessionID:  "session_1234567890",
+		provider:   "openai",
+		model:      "openai/gpt-5.5",
+		toolName:   "bash",
+		toolCalls:  "3",
+		toolErrors: "1",
+	}}, groupBySession, tabToolBreakdown)
+
+	golden := filepath.Join("testdata", "render_session_tool_breakdown.txt")
+	if os.Getenv("UPDATE_GOLDEN") != "" {
+		if err := os.WriteFile(golden, []byte(output), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	expected, err := os.ReadFile(golden)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal([]byte(output), expected) {
+		t.Fatalf("output mismatch\ngot:\n%s\nwant:\n%s", output, expected)
+	}
+}
+
 func TestRenderTableSessionRequests(t *testing.T) {
 	output := renderTable([]renderRow{{
 		harness:        "oc",
