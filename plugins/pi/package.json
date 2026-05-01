@@ -2,11 +2,15 @@
   "name": "pi-tokeninspector",
   "version": "1.0.0",
   "description": "Token and TPS tracking extension for Pi coding agent",
+  "scripts": {
+    "typecheck": "tsc --noEmit --module esnext --moduleResolution bundler --esModuleInterop --skipLibCheck index.ts"
+  },
   "dependencies": {
     "@types/better-sqlite3": "^7.6.13",
     "better-sqlite3": "^11.10.0"
   },
   "devDependencies": {
+    "@mariozechner/pi-coding-agent": "^0.71.0",
     "typescript": "^6.0.3"
   }
 }

@@ -11,7 +11,7 @@ const STREAM_WINDOW_MS = 5_000
 const LIVE_STALE_MS = 1_500
 const SINGLE_SAMPLE_MS = 1_000
 const BANNER_REFRESH_MS = 2_000
-const DEFAULT_DB_NAME = "oc-tps.sqlite"
+const DEFAULT_DB_NAME = "tokeninspector.sqlite"
 const DEFAULT_RETENTION_DAYS = 365
 
 function readStringOption(options: Record<string, unknown> | undefined, key: string) {
@@ -26,7 +26,18 @@ function readNumberOption(options: Record<string, unknown> | undefined, key: str
   return typeof value === "number" && Number.isFinite(value) ? value : fallback
 }
 
-function storageConfig(statePath: string, options: Record<string, unknown> | undefined): TokenStorageConfig {
+function defaultStatePath() {
+  const xdgStateHome = process.env.XDG_STATE_HOME?.trim()
+  if (xdgStateHome && xdgStateHome.length > 0) return join(xdgStateHome, "tokeninspector")
+
+  const home = process.env.HOME?.trim()
+  if (home && home.length > 0) return join(home, ".local", "state", "tokeninspector")
+
+  return join(process.cwd(), ".tokeninspector-state")
+}
+
+function storageConfig(options: Record<string, unknown> | undefined): TokenStorageConfig {
+  const statePath = defaultStatePath()
   const configuredPath = readStringOption(options, "dbPath")
   const dbPath = configuredPath
     ? isAbsolute(configuredPath)
@@ -171,7 +182,7 @@ const tui: TuiPlugin = async (api, options) => {
 
   const bump = () => setVersion((value) => value + 1)
 
-  const dbConfig = storageConfig(api.state.path.state, options)
+  const dbConfig = storageConfig(options)
 
   const pruneSamples = (now = Date.now()) => {
     let changed = false

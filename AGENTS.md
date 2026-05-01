@@ -1,6 +1,6 @@
 # tokeninspector — Agent Guide
 
-Track OpenCode token usage locally. Server plugin writes to SQLite via worker thread; TUI plugin reads for live display; Go CLI reads aggregate tables.
+Track local token usage for OpenCode and Pi. The OpenCode server plugin writes to SQLite via worker thread; the OpenCode TUI plugin reads for live display; the Pi extension writes its own table family; the Go CLI reads aggregate tables.
 
 Full architecture, schema contract, event flow, and invariants are in [`docs/design.md`](docs/design.md). Read it before any non-trivial change.
 
@@ -9,6 +9,7 @@ Full architecture, schema contract, event flow, and invariants are in [`docs/des
 - **Minimal, surgical changes**.
 - **Never use `any`** or type assertions (`!`, `as Type`) in TypeScript.
 - **Plugin and CLI are one project**. When changing storage, schema, events, SQL, aggregation, metric names, table columns, docs, or tests, update both sides in the same task.
+- **Default DB path** is `~/.local/state/tokeninspector/tokeninspector.sqlite`; writer overrides use `TOKENINSPECTOR_DB_PATH` and `TOKENINSPECTOR_RETENTION_DAYS`.
 - **Schema is the contract**. `schema/schema.sql` is the single source of truth. Plugin auto-migrates from it; CLI validates `PRAGMA user_version` against it.
 - **Schema changes require explicit user approval**. Before modifying `schema/schema.sql`, table structures, column definitions, or any cross-language schema contract, clearly explain the reasons to the user and ask for explicit approval. Never make silent or implicit schema changes — even for non-breaking additions.
 - **TPS is first-class**. Do not remove `oc_tps_samples`, `tps avg`, `tps mean`, or `tps median` when changing token schema.
@@ -42,6 +43,7 @@ bun run scripts/check-schema.ts
 bun build plugins/opencode-tui/oc-tokeninspector.tsx --target=bun --outfile=/tmp/oc-tokeninspector-check.js --external "solid-js" --external "@opentui/solid" --external "@opentui/solid/jsx-dev-runtime"
 bun build plugins/shared/oc-tokeninspector-writer.ts --target=bun --outfile=/tmp/oc-tokeninspector-writer-check.js
 bun build plugins/opencode-server/oc-tokeninspector-server.ts --target=bun --outfile=/tmp/oc-tokeninspector-server-check.js --external "@opencode-ai/plugin"
+cd plugins/pi && npm run typecheck
 ```
 
 ### CLI verification (Go changes)

@@ -1,6 +1,6 @@
 # tokeninspector
 
-Local OpenCode token usage tools. The server plugin writes token/TPS/request/tool-call data to SQLite via a worker thread; the TUI plugin queries the DB for live display; the Go CLI reads aggregate tables.
+Local token usage tools for OpenCode and Pi. The OpenCode server plugin and Pi extension write token/TPS/request/tool-call data to SQLite; the OpenCode TUI plugin queries the DB for live display; the Go CLI reads aggregate tables.
 
 See [`docs/design.md`](docs/design.md) for full architecture, schema contract, event flow, and invariants.
 
@@ -33,6 +33,7 @@ See [`docs/design.md`](docs/design.md) for full architecture, schema contract, e
 bun build plugins/opencode-tui/oc-tokeninspector.tsx --target=bun --outfile=/tmp/oc-tokeninspector-check.js --external "solid-js" --external "@opentui/solid" --external "@opentui/solid/jsx-dev-runtime"
 bun build plugins/shared/oc-tokeninspector-writer.ts --target=bun --outfile=/tmp/oc-tokeninspector-writer-check.js
 bun build plugins/opencode-server/oc-tokeninspector-server.ts --target=bun --outfile=/tmp/oc-tokeninspector-server-check.js --external "@opencode-ai/plugin"
+cd plugins/pi && npm run typecheck
 ```
 
 ### CLI verification
@@ -47,7 +48,7 @@ go build -o tokeninspector-cli ./cmd/tokeninspector-cli
 
 ```sh
 cd cli
-./tokeninspector-cli --db-path ~/.local/state/opencode/oc-tps.sqlite --today
+./tokeninspector-cli --db-path ~/.local/state/tokeninspector/tokeninspector.sqlite --today
 ```
 
 ## Install OpenCode Plugins
@@ -87,7 +88,12 @@ TUI plugins do **not** auto-discover. Add the TUI plugin to your per-OS `tui.jso
 
 Do **not** add `plugins/shared/oc-tokeninspector-writer.ts` or `plugins/shared/writer-client.ts` to config. The writer is a worker module loaded internally by the server plugin.
 
-Default DB path: `~/.local/state/opencode/oc-tps.sqlite`
+Default DB path: `~/.local/state/tokeninspector/tokeninspector.sqlite`
+
+Environment overrides for writers:
+
+- `TOKENINSPECTOR_DB_PATH` — absolute path, or relative to the TokenInspector state directory
+- `TOKENINSPECTOR_RETENTION_DAYS` — retention window for pruning durable rows
 
 ## Install Pi Extension
 
@@ -100,22 +106,22 @@ cd ~/.pi/agent/extensions/pi-tokeninspector
 npm install
 ```
 
-The Pi extension writes to the same DB as the OpenCode plugins (`~/.local/state/opencode/oc-tps.sqlite`) but stores data in the `pi_*` table family. The CLI reads both `oc_*` and `pi_*` tables and shows a `harness` column (`oc` or `pi`) to distinguish sources.
+The Pi extension writes to the same TokenInspector DB as the OpenCode plugins (`~/.local/state/tokeninspector/tokeninspector.sqlite`) but stores data in the `pi_*` table family. The CLI reads both `oc_*` and `pi_*` tables and shows a `harness` column (`oc` or `pi`) to distinguish sources.
 
 Tool calls are tracked as lifecycle rows (`started`, `completed`, `error`). The CLI `tool calls` tab shows started-call counts plus error counts per normal group; `tool breakdown` adds per-tool grouping.
 
 ## CLI Usage
 
 ```sh
-tokeninspector-cli --db-path ~/.local/state/opencode/oc-tps.sqlite --today
-tokeninspector-cli --db-path ~/.local/state/opencode/oc-tps.sqlite --week
-tokeninspector-cli --db-path ~/.local/state/opencode/oc-tps.sqlite --month
-tokeninspector-cli --db-path ~/.local/state/opencode/oc-tps.sqlite --all-time
-tokeninspector-cli --db-path ~/.local/state/opencode/oc-tps.sqlite --week --group-by=hour
-tokeninspector-cli --db-path ~/.local/state/opencode/oc-tps.sqlite --week --group-by=session
-tokeninspector-cli --db-path ~/.local/state/opencode/oc-tps.sqlite --week --provider openai --model gpt-5.5
-tokeninspector-cli --db-path ~/.local/state/opencode/oc-tps.sqlite --month
-tokeninspector-cli --db-path ~/.local/state/opencode/oc-tps.sqlite --all-time --filter-day 2026-04-24,2026-04-23
+tokeninspector-cli --db-path ~/.local/state/tokeninspector/tokeninspector.sqlite --today
+tokeninspector-cli --db-path ~/.local/state/tokeninspector/tokeninspector.sqlite --week
+tokeninspector-cli --db-path ~/.local/state/tokeninspector/tokeninspector.sqlite --month
+tokeninspector-cli --db-path ~/.local/state/tokeninspector/tokeninspector.sqlite --all-time
+tokeninspector-cli --db-path ~/.local/state/tokeninspector/tokeninspector.sqlite --week --group-by=hour
+tokeninspector-cli --db-path ~/.local/state/tokeninspector/tokeninspector.sqlite --week --group-by=session
+tokeninspector-cli --db-path ~/.local/state/tokeninspector/tokeninspector.sqlite --week --provider openai --model gpt-5.5
+tokeninspector-cli --db-path ~/.local/state/tokeninspector/tokeninspector.sqlite --month
+tokeninspector-cli --db-path ~/.local/state/tokeninspector/tokeninspector.sqlite --all-time --filter-day 2026-04-24,2026-04-23
 ```
 
 Interactive keys:

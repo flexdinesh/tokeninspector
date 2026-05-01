@@ -19,7 +19,7 @@ import type {
   TpsSampleRow,
 } from "../shared/types.ts"
 
-const DEFAULT_DB_NAME = "oc-tps.sqlite"
+const DEFAULT_DB_NAME = "tokeninspector.sqlite"
 const DEFAULT_RETENTION_DAYS = 365
 const DAY_MS = 24 * 60 * 60 * 1000
 const UNKNOWN_VALUE = "unknown"
@@ -152,22 +152,22 @@ function thinkingLevelFromOptions(options: unknown) {
 
 function defaultStatePath() {
   const xdgStateHome = process.env.XDG_STATE_HOME?.trim()
-  if (xdgStateHome && xdgStateHome.length > 0) return join(xdgStateHome, "opencode")
+  if (xdgStateHome && xdgStateHome.length > 0) return join(xdgStateHome, "tokeninspector")
 
   const home = process.env.HOME?.trim()
-  if (home && home.length > 0) return join(home, ".local", "state", "opencode")
+  if (home && home.length > 0) return join(home, ".local", "state", "tokeninspector")
 
-  return join(process.cwd(), ".opencode-state")
+  return join(process.cwd(), ".tokeninspector-state")
 }
 
 function dbPath() {
-  const configured = process.env.OC_TOKENINSPECTOR_DB_PATH?.trim()
+  const configured = process.env.TOKENINSPECTOR_DB_PATH?.trim()
   if (!configured) return join(defaultStatePath(), DEFAULT_DB_NAME)
   return isAbsolute(configured) ? configured : join(defaultStatePath(), configured)
 }
 
 function retentionDays() {
-  const configured = process.env.OC_TOKENINSPECTOR_RETENTION_DAYS?.trim()
+  const configured = process.env.TOKENINSPECTOR_RETENTION_DAYS?.trim()
   if (!configured) return DEFAULT_RETENTION_DAYS
 
   const parsed = Number(configured)

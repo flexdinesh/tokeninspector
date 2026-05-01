@@ -2,7 +2,7 @@
 
 ## North Star
 
-Track OpenCode token usage locally over time, without relying on vendor dashboards.
+Track local token usage across supported harnesses over time, without relying on vendor dashboards.
 
 The durable data model is a **session-centric token time series**. Every token row must relate to a `session_id`. No token data should exist without it.
 
@@ -22,7 +22,7 @@ TPS (tokens per second) is a first-class project metric. Do not remove persisted
          │                       │                       │
          ▼                       ▼                       ▼
 ┌───────────────────────────────────────────────────────────────┐
-│                SQLite DB (~/.local/state/opencode/oc-tps.sqlite) │
+│                SQLite DB (~/.local/state/tokeninspector/tokeninspector.sqlite) │
 │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐  │
 │  │ oc_token_events │  │ oc_tps_samples  │  │ oc_llm_requests │  │
 │  │  (token rows)   │  │ (throughput)    │  │ (attempts)      │  │
@@ -52,6 +52,7 @@ TPS (tokens per second) is a first-class project metric. Do not remove persisted
 - **Pi extension writes** using `better-sqlite3` directly from the extension event handler. Volume is low enough that synchronous writes do not block the Pi TUI.
 - **CLI reads** using `modernc.org/sqlite` with a `file:` URL and `mode=ro`. It never writes.
 - Both sides share **one schema file**: `schema/schema.sql`.
+- Default storage is TokenInspector-owned: `~/.local/state/tokeninspector/tokeninspector.sqlite`. Writer overrides use `TOKENINSPECTOR_DB_PATH` and `TOKENINSPECTOR_RETENTION_DAYS`; old harness-scoped env vars are not supported.
 
 ### Why This Boundary Matters
 
@@ -393,7 +394,7 @@ bun run scripts/check-schema.ts
 bun build plugins/opencode-tui/oc-tokeninspector.tsx --target=bun --outfile=/tmp/oc-tokeninspector-check.js --external "solid-js" --external "@opentui/solid" --external "@opentui/solid/jsx-dev-runtime"
 bun build plugins/shared/oc-tokeninspector-writer.ts --target=bun --outfile=/tmp/oc-tokeninspector-writer-check.js
 bun build plugins/opencode-server/oc-tokeninspector-server.ts --target=bun --outfile=/tmp/oc-tokeninspector-server-check.js --external "@opencode-ai/plugin"
-cd plugins/pi && npx tsc --noEmit --module esnext --moduleResolution node --esModuleInterop --skipLibCheck index.ts
+cd plugins/pi && npm run typecheck
 ```
 
 ### Go / CLI Changes
@@ -408,5 +409,5 @@ go build -o tokeninspector-cli ./cmd/tokeninspector-cli
 
 ```sh
 cd cli
-./tokeninspector-cli --db-path ~/.local/state/opencode/oc-tps.sqlite --today
+./tokeninspector-cli --db-path ~/.local/state/tokeninspector/tokeninspector.sqlite --today
 ```

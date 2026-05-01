@@ -17,7 +17,7 @@ import (
 
 func newTestDBPath(t *testing.T) string {
 	t.Helper()
-	dbPath := filepath.Join(t.TempDir(), "oc-tps.sqlite")
+	dbPath := filepath.Join(t.TempDir(), "tokeninspector.sqlite")
 	conn, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		t.Fatal(err)
