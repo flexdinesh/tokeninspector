@@ -21,7 +21,7 @@ Full architecture, schema contract, event flow, and invariants are in [`docs/des
 
 ## Change Checklist
 
-- Schema changed? Update `schema/schema.sql`, then run `bun run scripts/check-schema.ts`.
+- Schema changed? Update `schema/schema.sql`, then run `npm run check-schema`.
 - Schema changed? Update `cli/internal/db/schema.go` constants so Go tests pass.
 - Plugin row shape or token semantics changed? Update CLI query structs, SQL, aggregation, rendering, tests, README, and `docs/design.md`.
 - CLI query columns changed? Update `sample`, `querySamples`, scan order, aggregation, rendering, tests, README, and `docs/design.md`.
@@ -34,22 +34,18 @@ Full architecture, schema contract, event flow, and invariants are in [`docs/des
 ### Schema validation
 
 ```sh
-bun run scripts/check-schema.ts
+npm run check-schema
 ```
 
 ### Plugin smoke build (TypeScript changes)
 
 ```sh
-bun build plugins/opencode-tui/oc-tokeninsights.tsx --target=bun --outfile=/tmp/oc-tokeninsights-check.js --external "solid-js" --external "@opentui/solid" --external "@opentui/solid/jsx-dev-runtime"
-bun build plugins/shared/oc-tokeninsights-writer.ts --target=bun --outfile=/tmp/oc-tokeninsights-writer-check.js
-bun build plugins/opencode-server/oc-tokeninsights-server.ts --target=bun --outfile=/tmp/oc-tokeninsights-server-check.js --external "@opencode-ai/plugin"
-cd plugins/pi && npm run typecheck
+npm run smoke:plugins
 ```
 
 ### CLI verification (Go changes)
 
 ```sh
-cd cli
-go test ./...
-go build -o tokeninsights-cli ./cmd/tokeninsights-cli
+npm run test:go
+npm run build:cli
 ```

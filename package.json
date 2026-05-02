@@ -1,0 +1,18 @@
+{
+  "name": "tokeninsights",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check-schema": "node --experimental-strip-types scripts/check-schema.ts",
+    "build:server": "bun build plugins/opencode-server/oc-tokeninsights-server.ts --target=bun --outfile=/tmp/oc-tokeninsights-check.js --external \"@opencode-ai/plugin\"",
+    "build:tui": "bun build plugins/opencode-tui/oc-tokeninsights.tsx --target=bun --outfile=/tmp/oc-tokeninsights-check.js --external \"solid-js\" --external \"@opentui/solid\" --external \"@opentui/solid/jsx-dev-runtime\"",
+    "build:writer": "bun build plugins/shared/oc-tokeninsights-writer.ts --target=bun --outfile=/tmp/oc-tokeninsights-check.js",
+    "typecheck:pi": "cd plugins/pi && npm run typecheck",
+    "smoke:plugins": "npm run build:server && npm run build:tui && npm run build:writer && npm run typecheck:pi",
+    "test:go": "cd cli && go test ./...",
+    "build:cli": "cd cli && go build -o tokeninsights-cli ./cmd/tokeninsights-cli",
+    "smoke:db": "cd cli && ./tokeninsights-cli --db-path ~/.local/state/tokeninsights/tokeninsights.sqlite --today",
+    "verify:all": "npm run check-schema && npm run smoke:plugins && npm run test:go && npm run build:cli"
+  }
+}

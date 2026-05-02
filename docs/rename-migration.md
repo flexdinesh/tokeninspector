@@ -44,8 +44,7 @@ tokeninsights-cli --db-path ~/.local/state/tokeninsights/tokeninsights.sqlite --
 If you had the old binary in your PATH, rebuild from source:
 
 ```bash
-cd cli
-go build -o tokeninsights-cli ./cmd/tokeninsights-cli
+npm run build:cli
 ```
 
 ---
@@ -173,4 +172,4 @@ git remote set-url origin git@github.com:flexdinesh/tokeninsights.git
 - [ ] Update `opencode.jsonc` with new plugin ID (`oc-tokeninsights`)
 - [ ] Recreate Pi extension symlink (`pi-tokeninsights`)
 - [ ] Update git remote URL (after GitHub repo rename)
-- [ ] Rebuild CLI from source: `cd cli && go build -o tokeninsights-cli ./cmd/tokeninsights-cli`
+- [ ] Rebuild CLI from source: `npm run build:cli`

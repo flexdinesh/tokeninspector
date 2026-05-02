@@ -20,35 +20,33 @@ See [`docs/design.md`](docs/design.md) for full architecture, schema contract, e
 
 | You changed | Run |
 |-------------|-----|
-| `schema/schema.sql` | `bun run scripts/check-schema.ts` |
-| Any `.ts` in `plugins/` | Plugin smoke builds (see below) |
-| Any `.go` in `cli/` | `cd cli && go test ./... && go build -o tokeninsights-cli ./cmd/tokeninsights-cli` |
-| Storage, schema, events, SQL, aggregation, rendering, or tests | Update **both** plugin and CLI; run all of the above |
+| `schema/schema.sql` | `npm run check-schema` |
+| Any `.ts` in `plugins/` | `npm run smoke:plugins` |
+| Any `.go` in `cli/` | `npm run test:go && npm run build:cli` |
+| Storage, schema, events, SQL, aggregation, rendering, or tests | Update **both** plugin and CLI; `npm run verify:all` |
 
 > ⚠️ **Schema changes are user-approved only.** Never modify `schema/schema.sql` without explicit user approval, even for additive changes. Always explain the rationale and ask first.
 
 ### Plugin smoke builds
 
 ```sh
-bun build plugins/opencode-tui/oc-tokeninsights.tsx --target=bun --outfile=/tmp/oc-tokeninsights-check.js --external "solid-js" --external "@opentui/solid" --external "@opentui/solid/jsx-dev-runtime"
-bun build plugins/shared/oc-tokeninsights-writer.ts --target=bun --outfile=/tmp/oc-tokeninsights-writer-check.js
-bun build plugins/opencode-server/oc-tokeninsights-server.ts --target=bun --outfile=/tmp/oc-tokeninsights-server-check.js --external "@opencode-ai/plugin"
-cd plugins/pi && npm run typecheck
+npm run smoke:plugins
 ```
 
 ### CLI verification
 
 ```sh
-cd cli
-go test ./...
-go build -o tokeninsights-cli ./cmd/tokeninsights-cli
+npm run test:go
+npm run build:cli
 ```
 
 ### Smoke test against real DB
 
+Build the CLI first, then run against your local database:
+
 ```sh
-cd cli
-./tokeninsights-cli --db-path ~/.local/state/tokeninsights/tokeninsights.sqlite --today
+npm run build:cli
+npm run smoke:db
 ```
 
 ## Install OpenCode Plugins

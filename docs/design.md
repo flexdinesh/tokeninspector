@@ -175,7 +175,7 @@ Cross-language contract is validated by:
 - `scripts/check-schema.ts` — parses SQL, Go constants, and TS types
 - `cli/internal/db/schema_test.go` — Go-level contract test
 
-Run `bun run scripts/check-schema.ts` before any schema-related commit.
+Run `npm run check-schema` before any schema-related commit.
 
 ## Token Semantics
 
@@ -387,29 +387,27 @@ Even the items below require explicit user approval before implementation. Surfa
 ### Schema Changes
 
 ```sh
-bun run scripts/check-schema.ts
+npm run check-schema
 ```
 
 ### TypeScript / Plugin Changes
 
 ```sh
-bun build plugins/opencode-tui/oc-tokeninsights.tsx --target=bun --outfile=/tmp/oc-tokeninsights-check.js --external "solid-js" --external "@opentui/solid" --external "@opentui/solid/jsx-dev-runtime"
-bun build plugins/shared/oc-tokeninsights-writer.ts --target=bun --outfile=/tmp/oc-tokeninsights-writer-check.js
-bun build plugins/opencode-server/oc-tokeninsights-server.ts --target=bun --outfile=/tmp/oc-tokeninsights-server-check.js --external "@opencode-ai/plugin"
-cd plugins/pi && npm run typecheck
+npm run smoke:plugins
 ```
 
 ### Go / CLI Changes
 
 ```sh
-cd cli
-go test ./...
-go build -o tokeninsights-cli ./cmd/tokeninsights-cli
+npm run test:go
+npm run build:cli
 ```
 
 ### Smoke Test Against Real DB
 
+Build the CLI first, then run against your local database:
+
 ```sh
-cd cli
-./tokeninsights-cli --db-path ~/.local/state/tokeninsights/tokeninsights.sqlite --today
+npm run build:cli
+npm run smoke:db
 ```

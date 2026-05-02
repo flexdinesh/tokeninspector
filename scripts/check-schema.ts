@@ -1,4 +1,5 @@
-#!/usr/bin/env bun
+import { readFile } from "node:fs/promises";
+
 // Cross-language schema contract validator.
 // Checks that Go string constants in schema.go match identifiers in schema.sql.
 
@@ -14,7 +15,7 @@ const SQL_KEYWORDS = new Set([
 ]);
 
 async function readText(path: string): Promise<string> {
-  return await Bun.file(path).text();
+  return await readFile(path, "utf-8");
 }
 
 function extractSchemaSqlIdentifiers(sql: string): { tables: Set<string>; columns: Set<string>; indexes: Set<string> } {
