@@ -10,7 +10,7 @@ The CLI reads the SQLite database directly, aggregates rows from the OpenCode `o
 ~/workspace/tokeninspector/cli/tokeninspector-cli --db-path ~/.local/state/tokeninspector/tokeninspector.sqlite
 ```
 
-The default interactive view shows the current week. Press `q` to quit.
+The default interactive view shows the current week. Press `q` to quit. Use `↑/↓` or `j/k` to scroll vertically, `←/→` or `h/l` to scroll horizontally, and `home`/`end` to jump to the start/end of the horizontal table viewport.
 
 More examples:
 

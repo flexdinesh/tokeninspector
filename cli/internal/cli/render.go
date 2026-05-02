@@ -7,6 +7,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/lipgloss/table"
+	"github.com/charmbracelet/x/ansi"
 )
 
 type tabMode int
@@ -199,6 +200,50 @@ func renderTable(rows []renderRow, g groupByMode, tab tabMode) string {
 	return renderTableWithWidth(rows, g, tab, 0)
 }
 
+func renderTableViewport(rows []renderRow, g groupByMode, tab tabMode, width int, horizontalOffset int) string {
+	if width <= 0 {
+		return ""
+	}
+	return horizontalViewport(renderTable(rows, g, tab), horizontalOffset, width)
+}
+
+func renderTableWidth(rows []renderRow, g groupByMode, tab tabMode) int {
+	return lipgloss.Width(renderTable(rows, g, tab))
+}
+
+func horizontalViewport(value string, horizontalOffset int, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	if horizontalOffset < 0 {
+		horizontalOffset = 0
+	}
+
+	lines := strings.Split(value, "\n")
+	hasTrailingNewline := len(lines) > 0 && lines[len(lines)-1] == ""
+	if hasTrailingNewline {
+		lines = lines[:len(lines)-1]
+	}
+
+	for i, line := range lines {
+		lines[i] = padANSI(ansi.Cut(line, horizontalOffset, horizontalOffset+width), width)
+	}
+
+	result := strings.Join(lines, "\n")
+	if hasTrailingNewline {
+		return result + "\n"
+	}
+	return result
+}
+
+func padANSI(value string, width int) string {
+	padding := width - ansi.StringWidth(value)
+	if padding <= 0 {
+		return value
+	}
+	return value + strings.Repeat(" ", padding)
+}
+
 func renderTableWithWidth(rows []renderRow, g groupByMode, tab tabMode, width int) string {
 	cols := columnsForModeAndTab(g, tab)
 
@@ -266,6 +311,7 @@ func renderTableWithWidth(rows []renderRow, g groupByMode, tab tabMode, width in
 		BorderStyle(borderStyle).
 		Headers(header...).
 		Rows(formatted...).
+		Wrap(false).
 		StyleFunc(func(row int, col int) lipgloss.Style {
 			if row == table.HeaderRow {
 				return headerStyle

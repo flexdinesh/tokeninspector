@@ -120,6 +120,7 @@ tokeninspector-cli --db-path ~/.local/state/tokeninspector/tokeninspector.sqlite
 tokeninspector-cli --db-path ~/.local/state/tokeninspector/tokeninspector.sqlite --week --group-by=hour
 tokeninspector-cli --db-path ~/.local/state/tokeninspector/tokeninspector.sqlite --week --group-by=session
 tokeninspector-cli --db-path ~/.local/state/tokeninspector/tokeninspector.sqlite --week --provider openai --model gpt-5.5
+tokeninspector-cli --db-path ~/.local/state/tokeninspector/tokeninspector.sqlite --week --harness pi
 tokeninspector-cli --db-path ~/.local/state/tokeninspector/tokeninspector.sqlite --month
 tokeninspector-cli --db-path ~/.local/state/tokeninspector/tokeninspector.sqlite --all-time --filter-day 2026-04-24,2026-04-23
 ```
@@ -128,6 +129,11 @@ Interactive keys:
 
 - `tab` / `shift+tab` — switch tabs (tokens, tps, requests, tool calls, tool breakdown)
 - `g` — open grouping popup
-- `↑/↓` / `j/k` — scroll or move cursor in popup
-- `space` / `enter` — select grouping mode
+- `f` — open filter popup for provider or harness
+- `↑/↓` / `j/k` — scroll vertically or move cursor in popup
+- `←/→` / `h/l` — scroll the table horizontally
+- `home` / `end` — jump to the start/end of the horizontal table viewport
+- grouping popup: `space` / `enter` selects grouping mode
+- filter popup: `space` / `enter` enters value selection; in value selection, `space` toggles values and `enter` applies
+- `esc` in a popup closes without applying staged filter changes
 - `q` / `esc` / `ctrl+c` — quit

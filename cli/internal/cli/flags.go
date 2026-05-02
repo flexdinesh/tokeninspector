@@ -46,6 +46,7 @@ type filters struct {
 	sessionIDs stringList
 	providers  stringList
 	models     stringList
+	harnesses  stringList
 	dayFrom    string
 	dayTo      string
 }
@@ -74,6 +75,7 @@ func parseTableOptions(args []string, stderr io.Writer, requirePeriod bool, defa
 	flags.Var(&queryFilters.sessionIDs, "session-id", "filter by session id; repeat or comma-separate")
 	flags.Var(&queryFilters.providers, "provider", "filter by provider; repeat or comma-separate")
 	flags.Var(&queryFilters.models, "model", "filter by model; repeat or comma-separate")
+	flags.Var(&queryFilters.harnesses, "harness", "filter by harness (oc or pi); repeat or comma-separate")
 	flags.StringVar(&queryFilters.dayFrom, "filter-day-from", "", "filter from local day YYYY-MM-DD")
 	flags.StringVar(&queryFilters.dayTo, "filter-day-to", "", "filter to local day YYYY-MM-DD")
 
@@ -89,6 +91,10 @@ func parseTableOptions(args []string, stderr io.Writer, requirePeriod bool, defa
 
 	selected, err := selectedPeriod(today, week, month, allTime, requirePeriod, defaultPeriod)
 	if err != nil {
+		return tableOptions{}, err
+	}
+
+	if err := validateHarnesses(queryFilters.harnesses); err != nil {
 		return tableOptions{}, err
 	}
 
@@ -171,4 +177,13 @@ func periodStart(now time.Time, selected period) time.Time {
 	}
 }
 
-var ErrUsage = errors.New("usage: tokeninspector-cli --db-path PATH [--today|--week|--month|--all-time] [--session-id ID] [--provider ID] [--model ID] [--filter-day-from YYYY-MM-DD] [--filter-day-to YYYY-MM-DD]")
+func validateHarnesses(values stringList) error {
+	for _, value := range values {
+		if value != "oc" && value != "pi" {
+			return fmt.Errorf("invalid --harness %q: must be oc or pi\n%w", value, ErrUsage)
+		}
+	}
+	return nil
+}
+
+var ErrUsage = errors.New("usage: tokeninspector-cli --db-path PATH [--today|--week|--month|--all-time] [--session-id ID] [--provider ID] [--model ID] [--harness oc|pi] [--filter-day-from YYYY-MM-DD] [--filter-day-to YYYY-MM-DD]")

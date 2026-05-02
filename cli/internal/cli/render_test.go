@@ -4,8 +4,22 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/charmbracelet/x/ansi"
 )
+
+func TestHorizontalViewportSlicesAndPadsStyledContent(t *testing.T) {
+	output := horizontalViewport("\x1b[31mabcdef\x1b[0m\n", 2, 3)
+	line := strings.TrimSuffix(output, "\n")
+	if !strings.Contains(line, "cde") {
+		t.Fatalf("got %q, want viewport to include cde", output)
+	}
+	if width := ansi.StringWidth(line); width != 3 {
+		t.Fatalf("got width %d, want 3", width)
+	}
+}
 
 func TestRenderTableDailyTokens(t *testing.T) {
 	output := renderTable([]renderRow{{

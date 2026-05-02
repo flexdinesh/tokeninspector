@@ -310,6 +310,18 @@ func buildWhereClause(f Filter) (string, []any) {
 	return "WHERE " + strings.Join(where, " AND "), args
 }
 
+func harnessAllowed(f Filter, harness string) bool {
+	if len(f.Harnesses) == 0 {
+		return true
+	}
+	for _, value := range f.Harnesses {
+		if value == harness {
+			return true
+		}
+	}
+	return false
+}
+
 // queryTokenEvents aggregates token events from a single table.
 func queryTokenEvents(ctx context.Context, db *sql.DB, f Filter, g GroupBy, table, harness string, result map[rowKey]*Row) error {
 	whereClause, args := buildWhereClause(f)
@@ -354,23 +366,27 @@ func queryTokenEvents(ctx context.Context, db *sql.DB, f Filter, g GroupBy, tabl
 func aggregateTokenEvents(ctx context.Context, db *sql.DB, f Filter, g GroupBy) (map[rowKey]*Row, error) {
 	result := make(map[rowKey]*Row)
 
-	exists, err := tableExists(ctx, db, TableTokenEvents)
-	if err != nil {
-		return nil, err
-	}
-	if exists {
-		if err := queryTokenEvents(ctx, db, f, g, TableTokenEvents, "oc", result); err != nil {
+	if harnessAllowed(f, "oc") {
+		exists, err := tableExists(ctx, db, TableTokenEvents)
+		if err != nil {
 			return nil, err
+		}
+		if exists {
+			if err := queryTokenEvents(ctx, db, f, g, TableTokenEvents, "oc", result); err != nil {
+				return nil, err
+			}
 		}
 	}
 
-	exists, err = tableExists(ctx, db, TablePiTokenEvents)
-	if err != nil {
-		return nil, err
-	}
-	if exists {
-		if err := queryTokenEvents(ctx, db, f, g, TablePiTokenEvents, "pi", result); err != nil {
+	if harnessAllowed(f, "pi") {
+		exists, err := tableExists(ctx, db, TablePiTokenEvents)
+		if err != nil {
 			return nil, err
+		}
+		if exists {
+			if err := queryTokenEvents(ctx, db, f, g, TablePiTokenEvents, "pi", result); err != nil {
+				return nil, err
+			}
 		}
 	}
 
@@ -433,23 +449,27 @@ func queryTpsSamples(ctx context.Context, db *sql.DB, f Filter, g GroupBy, table
 
 // aggregateTpsSamples queries oc_tps_samples and pi_tps_samples with SQL-side GROUP BY and median via window CTE.
 func aggregateTpsSamples(ctx context.Context, db *sql.DB, f Filter, g GroupBy, result map[rowKey]*Row) error {
-	exists, err := tableExists(ctx, db, TableTpsSamples)
-	if err != nil {
-		return err
-	}
-	if exists {
-		if err := queryTpsSamples(ctx, db, f, g, TableTpsSamples, "oc", result); err != nil {
+	if harnessAllowed(f, "oc") {
+		exists, err := tableExists(ctx, db, TableTpsSamples)
+		if err != nil {
 			return err
+		}
+		if exists {
+			if err := queryTpsSamples(ctx, db, f, g, TableTpsSamples, "oc", result); err != nil {
+				return err
+			}
 		}
 	}
 
-	exists, err = tableExists(ctx, db, TablePiTpsSamples)
-	if err != nil {
-		return err
-	}
-	if exists {
-		if err := queryTpsSamples(ctx, db, f, g, TablePiTpsSamples, "pi", result); err != nil {
+	if harnessAllowed(f, "pi") {
+		exists, err := tableExists(ctx, db, TablePiTpsSamples)
+		if err != nil {
 			return err
+		}
+		if exists {
+			if err := queryTpsSamples(ctx, db, f, g, TablePiTpsSamples, "pi", result); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -497,23 +517,27 @@ func queryLLMRequests(ctx context.Context, db *sql.DB, f Filter, g GroupBy, tabl
 
 // aggregateLLMRequests queries oc_llm_requests and pi_llm_requests with SQL-side COUNT grouping.
 func aggregateLLMRequests(ctx context.Context, db *sql.DB, f Filter, g GroupBy, result map[rowKey]*Row) error {
-	exists, err := tableExists(ctx, db, TableLLMRequests)
-	if err != nil {
-		return err
-	}
-	if exists {
-		if err := queryLLMRequests(ctx, db, f, g, TableLLMRequests, "oc", result); err != nil {
+	if harnessAllowed(f, "oc") {
+		exists, err := tableExists(ctx, db, TableLLMRequests)
+		if err != nil {
 			return err
+		}
+		if exists {
+			if err := queryLLMRequests(ctx, db, f, g, TableLLMRequests, "oc", result); err != nil {
+				return err
+			}
 		}
 	}
 
-	exists, err = tableExists(ctx, db, TablePiLLMRequests)
-	if err != nil {
-		return err
-	}
-	if exists {
-		if err := queryLLMRequests(ctx, db, f, g, TablePiLLMRequests, "pi", result); err != nil {
+	if harnessAllowed(f, "pi") {
+		exists, err := tableExists(ctx, db, TablePiLLMRequests)
+		if err != nil {
 			return err
+		}
+		if exists {
+			if err := queryLLMRequests(ctx, db, f, g, TablePiLLMRequests, "pi", result); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -556,23 +580,27 @@ func queryToolCalls(ctx context.Context, db *sql.DB, f Filter, g GroupBy, table,
 
 // aggregateToolCalls queries oc_tool_calls and pi_tool_calls with SQL-side COUNT grouping.
 func aggregateToolCalls(ctx context.Context, db *sql.DB, f Filter, g GroupBy, result map[rowKey]*Row, includeToolName bool) error {
-	exists, err := tableExists(ctx, db, TableToolCalls)
-	if err != nil {
-		return err
-	}
-	if exists {
-		if err := queryToolCalls(ctx, db, f, g, TableToolCalls, "oc", includeToolName, result); err != nil {
+	if harnessAllowed(f, "oc") {
+		exists, err := tableExists(ctx, db, TableToolCalls)
+		if err != nil {
 			return err
+		}
+		if exists {
+			if err := queryToolCalls(ctx, db, f, g, TableToolCalls, "oc", includeToolName, result); err != nil {
+				return err
+			}
 		}
 	}
 
-	exists, err = tableExists(ctx, db, TablePiToolCalls)
-	if err != nil {
-		return err
-	}
-	if exists {
-		if err := queryToolCalls(ctx, db, f, g, TablePiToolCalls, "pi", includeToolName, result); err != nil {
+	if harnessAllowed(f, "pi") {
+		exists, err := tableExists(ctx, db, TablePiToolCalls)
+		if err != nil {
 			return err
+		}
+		if exists {
+			if err := queryToolCalls(ctx, db, f, g, TablePiToolCalls, "pi", includeToolName, result); err != nil {
+				return err
+			}
 		}
 	}
 

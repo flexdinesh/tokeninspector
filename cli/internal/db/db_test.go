@@ -877,3 +877,92 @@ func TestAggregateAllTime(t *testing.T) {
 		t.Fatalf("unexpected second day: %s", rows[1].Day)
 	}
 }
+
+func TestAggregateHarnessFilter(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	day := time.Date(2026, 4, 24, 12, 0, 0, 0, time.Local).UnixMilli()
+	insertTokenEvent(t, db, day, "ses_1", "openai", "gpt", 100, 10, 5, 20, 1, 136)
+	insertPiTokenEvent(t, db, day, "ses_2", "anthropic", "claude", 200, 20, 10, 40, 2, 272)
+
+	ocRows, err := Aggregate(context.Background(), db, Filter{Harnesses: []string{"oc"}}, GroupByDay)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ocRows) != 1 || ocRows[0].Harness != "oc" || ocRows[0].Provider != "openai" {
+		t.Fatalf("unexpected oc rows: %+v", ocRows)
+	}
+
+	piRows, err := Aggregate(context.Background(), db, Filter{Harnesses: []string{"pi"}}, GroupByDay)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(piRows) != 1 || piRows[0].Harness != "pi" || piRows[0].Provider != "anthropic" {
+		t.Fatalf("unexpected pi rows: %+v", piRows)
+	}
+
+	allRows, err := Aggregate(context.Background(), db, Filter{Harnesses: []string{"oc", "pi"}}, GroupByDay)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(allRows) != 2 {
+		t.Fatalf("got %d rows, want 2", len(allRows))
+	}
+}
+
+func TestAvailableProvidersAndHarnesses(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	day := time.Date(2026, 4, 24, 12, 0, 0, 0, time.Local).UnixMilli()
+	insertTokenEvent(t, db, day, "ses_1", "openai", "gpt", 100, 10, 5, 20, 1, 136)
+	insertPiTokenEvent(t, db, day, "ses_2", "anthropic", "claude", 200, 20, 10, 40, 2, 272)
+	insertToolCall(t, db, TableToolCalls, day, "ses_3", "github-copilot", "claude", "bash", "started")
+
+	providers, err := AvailableProviders(context.Background(), db, Filter{
+		Start: time.Date(2026, 4, 24, 0, 0, 0, 0, time.Local),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !stringSliceEqual(providers, []string{"anthropic", "github-copilot", "openai"}) {
+		t.Fatalf("unexpected providers: %+v", providers)
+	}
+
+	piProviders, err := AvailableProviders(context.Background(), db, Filter{Harnesses: []string{"pi"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !stringSliceEqual(piProviders, []string{"anthropic"}) {
+		t.Fatalf("unexpected pi providers: %+v", piProviders)
+	}
+
+	harnesses, err := AvailableHarnesses(context.Background(), db, Filter{Providers: []string{"openai"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !stringSliceEqual(harnesses, []string{"oc"}) {
+		t.Fatalf("unexpected openai harnesses: %+v", harnesses)
+	}
+
+	harnesses, err = AvailableHarnesses(context.Background(), db, Filter{Providers: []string{"anthropic"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !stringSliceEqual(harnesses, []string{"pi"}) {
+		t.Fatalf("unexpected anthropic harnesses: %+v", harnesses)
+	}
+}
+
+func stringSliceEqual(a []string, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}

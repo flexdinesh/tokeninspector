@@ -14,6 +14,7 @@ type Filter struct {
 	SessionIDs []string
 	Providers  []string
 	Models     []string
+	Harnesses  []string
 	DayFrom    string // YYYY-MM-DD local
 	DayTo      string // YYYY-MM-DD local
 }
@@ -83,6 +84,9 @@ func buildFilterArgs(f Filter) ([]any, []string) {
 
 // Events queries oc_token_events with filters pushed into SQL.
 func Events(ctx context.Context, db *sql.DB, f Filter) ([]Event, error) {
+	if !harnessAllowed(f, "oc") {
+		return nil, nil
+	}
 	args, where := buildFilterArgs(f)
 	clause := ""
 	if len(where) > 0 {

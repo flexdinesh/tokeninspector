@@ -273,8 +273,8 @@ Runs as a Pi coding-agent extension. **One extension collects all data**: tokens
    - `--all-time`: no start filter (show all data)
    - Default (no period flag): `--week`
 5. Open DB read-only.
-6. Load and aggregate rows asynchronously with filters pushed into SQL WHERE clauses.
-7. Render an ASCII table in the active tab.
+6. Load and aggregate rows asynchronously with filters pushed into SQL WHERE clauses. Harness filters select which table families are queried.
+7. Render an ASCII table in the active tab. The interactive viewport supports vertical row scrolling and whole-table horizontal scrolling for wide tables.
 
 ### Aggregation
 
@@ -310,6 +310,7 @@ The interactive TUI has five tabs. Only columns relevant to the active tab are r
 ### Rendering
 
 - `renderTableWithWidth` builds rows as strings, calculates widths, left-aligns text columns, right-aligns numeric columns.
+- The interactive TUI renders the table at natural width with wrapping disabled, then applies an ANSI-aware horizontal viewport so wide tables can scroll left/right without breaking styling.
 - Numeric columns start after the grouping columns and provider/model.
 - **Compact token units**:
   - `0` → blank
@@ -326,12 +327,13 @@ All filters can be repeated or comma-separated:
 - `--session-id`: exact match against `session_id`
 - `--provider`: exact match against `provider`
 - `--model`: exact match against `model`
+- `--harness`: exact match against harness (`oc` or `pi`)
 - `--filter-day-from YYYY-MM-DD`: inclusive lower bound on local day derived from `recorded_at_ms`
 - `--filter-day-to YYYY-MM-DD`: inclusive upper bound on local day derived from `recorded_at_ms`
   - `--filter-day-from` must not be after `--filter-day-to`
   - Both must be valid `YYYY-MM-DD` dates
 
-Period and date range filters are pushed into SQL WHERE clauses.
+Period and date range filters are pushed into SQL WHERE clauses. In the interactive TUI, `f` opens a filter popup for provider or harness. The popup reflects the current effective filter state, including filters initialized from CLI flags. `space`/`enter` chooses a filter dimension, `space` toggles values, `enter` applies selected values, and `esc` closes without applying staged changes. `↑/↓` and `j/k` scroll rows; `←/→` and `h/l` scroll the whole table horizontally; `home`/`end` jump to the start/end of the horizontal table viewport. Provider value discovery is global across token, TPS, request, and tool-call data rather than active-tab-specific.
 
 ## Invariants (What Can & Cannot Change)
 
