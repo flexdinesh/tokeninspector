@@ -58,7 +58,7 @@ type tableOptions struct {
 }
 
 func parseTableOptions(args []string, stderr io.Writer, requirePeriod bool, defaultPeriod period) (tableOptions, error) {
-	flags := flag.NewFlagSet("tokeninspector-cli", flag.ContinueOnError)
+	flags := flag.NewFlagSet("tokeninsights-cli", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 
 	var dbPath string
@@ -67,7 +67,7 @@ func parseTableOptions(args []string, stderr io.Writer, requirePeriod bool, defa
 	var month bool
 	var allTime bool
 	var queryFilters filters
-	flags.StringVar(&dbPath, "db-path", "", "path to tokeninspector sqlite db")
+	flags.StringVar(&dbPath, "db-path", "", "path to tokeninsights sqlite db")
 	flags.BoolVar(&today, "today", false, "show today")
 	flags.BoolVar(&week, "week", false, "show current calendar week (Mon-Sun)")
 	flags.BoolVar(&month, "month", false, "show current calendar month")
@@ -186,4 +186,4 @@ func validateHarnesses(values stringList) error {
 	return nil
 }
 
-var ErrUsage = errors.New("usage: tokeninspector-cli --db-path PATH [--today|--week|--month|--all-time] [--session-id ID] [--provider ID] [--model ID] [--harness oc|pi] [--filter-day-from YYYY-MM-DD] [--filter-day-to YYYY-MM-DD]")
+var ErrUsage = errors.New("usage: tokeninsights-cli --db-path PATH [--today|--week|--month|--all-time] [--session-id ID] [--provider ID] [--model ID] [--harness oc|pi] [--filter-day-from YYYY-MM-DD] [--filter-day-to YYYY-MM-DD]")

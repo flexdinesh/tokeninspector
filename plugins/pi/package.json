@@ -1,5 +1,5 @@
 {
-  "name": "pi-tokeninspector",
+  "name": "pi-tokeninsights",
   "version": "1.0.0",
   "description": "Token and TPS tracking extension for Pi coding agent",
   "scripts": {

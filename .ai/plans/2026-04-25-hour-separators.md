@@ -23,7 +23,7 @@ When rendering the CLI table in `groupByHour` mode, insert an empty-row separato
 
 ### 4. Verification
 - `cd cli && go test ./...`
-- `cd cli && go build -o tokeninspector-cli .`
+- `cd cli && go build -o tokeninsights-cli .`
 
 ## Decisions Made
 | Question | Answer |

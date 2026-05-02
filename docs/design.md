@@ -1,4 +1,4 @@
-# tokeninspector Design
+# tokeninsights Design
 
 ## North Star
 
@@ -13,7 +13,7 @@ TPS (tokens per second) is a first-class project metric. Do not remove persisted
 ```
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
 │  OpenCode TUI   │     │  OpenCode Server│     │   Pi Extension  │
-│  oc-tokeninspector│     │oc-tokeninspector│     │ pi-tokeninspector│
+│  oc-tokeninsights│     │oc-tokeninsights│     │ pi-tokeninsights│
 │     .tsx        │     │   -server.ts    │     │    index.ts     │
 └────────┬────────┘     └────────┬────────┘     └────────┬────────┘
          │                       │                       │
@@ -22,7 +22,7 @@ TPS (tokens per second) is a first-class project metric. Do not remove persisted
          │                       │                       │
          ▼                       ▼                       ▼
 ┌───────────────────────────────────────────────────────────────┐
-│                SQLite DB (~/.local/state/tokeninspector/tokeninspector.sqlite) │
+│                SQLite DB (~/.local/state/tokeninsights/tokeninsights.sqlite) │
 │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐  │
 │  │ oc_token_events │  │ oc_tps_samples  │  │ oc_llm_requests │  │
 │  │  (token rows)   │  │ (throughput)    │  │ (attempts)      │  │
@@ -41,18 +41,18 @@ TPS (tokens per second) is a first-class project metric. Do not remove persisted
          │
 ┌─────────────────┐
 │   Go CLI        │
-│ tokeninspector-cli│
+│ tokeninsights-cli│
 └─────────────────┘
 ```
 
 ### Plugin / CLI Boundary
 
-- **Server plugin writes** all durable OpenCode data using `bun:sqlite` in a Bun worker thread (`oc-tokeninspector-writer.ts`). Writes are queued in memory and flushed about once per second. A hard crash can lose the most recent queued batch.
+- **Server plugin writes** all durable OpenCode data using `bun:sqlite` in a Bun worker thread (`oc-tokeninsights-writer.ts`). Writes are queued in memory and flushed about once per second. A hard crash can lose the most recent queued batch.
 - **TUI plugin reads only** — it queries `oc_tps_samples` for session averages/TTFT and estimates live TPS from `message.part.delta` events in memory.
 - **Pi extension writes** using `better-sqlite3` directly from the extension event handler. Volume is low enough that synchronous writes do not block the Pi TUI.
 - **CLI reads** using `modernc.org/sqlite` with a `file:` URL and `mode=ro`. It never writes.
 - Both sides share **one schema file**: `schema/schema.sql`.
-- Default storage is TokenInspector-owned: `~/.local/state/tokeninspector/tokeninspector.sqlite`. Writer overrides use `TOKENINSPECTOR_DB_PATH` and `TOKENINSPECTOR_RETENTION_DAYS`; old harness-scoped env vars are not supported.
+- Default storage is TokenInsights-owned: `~/.local/state/tokeninsights/tokeninsights.sqlite`. Writer overrides use `TOKENINSIGHTS_DB_PATH` and `TOKENINSIGHTS_RETENTION_DAYS`; old harness-scoped env vars are not supported.
 
 ### Why This Boundary Matters
 
@@ -191,7 +191,7 @@ Missing `provider` or `model` must not drop token data. Store, render, and query
 
 ## Plugin Event Flow
 
-### TUI Plugin (`oc-tokeninspector.tsx`)
+### TUI Plugin (`oc-tokeninsights.tsx`)
 
 The TUI plugin is **read-only** for durable data. It handles:
 
@@ -213,7 +213,7 @@ TPS <live> | AVG <session avg> | TTFT <session avg ttft>
 
 Live TPS uses the last 5 seconds of estimated stream deltas and hides when idle/stale. Session average and TTFT are queried from `oc_tps_samples` every `BANNER_REFRESH_MS` (default 2000 ms) and persist across TUI restarts.
 
-### Server Plugin (`oc-tokeninspector-server.ts`)
+### Server Plugin (`oc-tokeninsights-server.ts`)
 
 Runs as an OpenCode server plugin and is the **sole writer** of OpenCode token data.
 
@@ -259,7 +259,7 @@ Runs as a Pi coding-agent extension. **One extension collects all data**: tokens
 
 ### Entry Point
 
-`cli/cmd/tokeninspector-cli/main.go` dispatches to `cli/internal/cli.RunInteractive()`.
+`cli/cmd/tokeninsights-cli/main.go` dispatches to `cli/internal/cli.RunInteractive()`.
 
 ### Query Flow (`RunInteractive`)
 
@@ -361,9 +361,9 @@ Even the items below require explicit user approval before implementation. Surfa
 
 | Directory / File | Role |
 |-----------------|------|
-| `plugins/opencode-tui/oc-tokeninspector.tsx` | TUI plugin entry point; live display, DB queries |
-| `plugins/opencode-server/oc-tokeninspector-server.ts` | Server plugin; durable collection, LLM request and tool-call tracking |
-| `plugins/shared/oc-tokeninspector-writer.ts` | Bun worker; SQLite writes, schema migration, pruning |
+| `plugins/opencode-tui/oc-tokeninsights.tsx` | TUI plugin entry point; live display, DB queries |
+| `plugins/opencode-server/oc-tokeninsights-server.ts` | Server plugin; durable collection, LLM request and tool-call tracking |
+| `plugins/shared/oc-tokeninsights-writer.ts` | Bun worker; SQLite writes, schema migration, pruning |
 | `plugins/shared/writer-client.ts` | Shared worker client; used by both TUI and server plugins |
 | `plugins/shared/types.ts` | Shared TypeScript types (plugin + worker + server) |
 | `plugins/shared/schema-migrate.ts` | Auto-migration logic parsed from `schema/schema.sql` |
@@ -371,7 +371,7 @@ Even the items below require explicit user approval before implementation. Surfa
 | `plugins/pi/package.json` | Pi extension dependency manifest (`better-sqlite3`) |
 | `schema/schema.sql` | Single source of truth for SQLite schema |
 | `scripts/check-schema.ts` | Cross-language schema contract validator |
-| `cli/cmd/tokeninspector-cli/main.go` | CLI entry point |
+| `cli/cmd/tokeninsights-cli/main.go` | CLI entry point |
 | `cli/internal/db/open.go` | Read-only DB open + schema version check |
 | `cli/internal/db/schema.go` | Go string constants for table/column names |
 | `cli/internal/db/schema_test.go` | Go schema contract test |
@@ -393,9 +393,9 @@ bun run scripts/check-schema.ts
 ### TypeScript / Plugin Changes
 
 ```sh
-bun build plugins/opencode-tui/oc-tokeninspector.tsx --target=bun --outfile=/tmp/oc-tokeninspector-check.js --external "solid-js" --external "@opentui/solid" --external "@opentui/solid/jsx-dev-runtime"
-bun build plugins/shared/oc-tokeninspector-writer.ts --target=bun --outfile=/tmp/oc-tokeninspector-writer-check.js
-bun build plugins/opencode-server/oc-tokeninspector-server.ts --target=bun --outfile=/tmp/oc-tokeninspector-server-check.js --external "@opencode-ai/plugin"
+bun build plugins/opencode-tui/oc-tokeninsights.tsx --target=bun --outfile=/tmp/oc-tokeninsights-check.js --external "solid-js" --external "@opentui/solid" --external "@opentui/solid/jsx-dev-runtime"
+bun build plugins/shared/oc-tokeninsights-writer.ts --target=bun --outfile=/tmp/oc-tokeninsights-writer-check.js
+bun build plugins/opencode-server/oc-tokeninsights-server.ts --target=bun --outfile=/tmp/oc-tokeninsights-server-check.js --external "@opencode-ai/plugin"
 cd plugins/pi && npm run typecheck
 ```
 
@@ -404,12 +404,12 @@ cd plugins/pi && npm run typecheck
 ```sh
 cd cli
 go test ./...
-go build -o tokeninspector-cli ./cmd/tokeninspector-cli
+go build -o tokeninsights-cli ./cmd/tokeninsights-cli
 ```
 
 ### Smoke Test Against Real DB
 
 ```sh
 cd cli
-./tokeninspector-cli --db-path ~/.local/state/tokeninspector/tokeninspector.sqlite --today
+./tokeninsights-cli --db-path ~/.local/state/tokeninsights/tokeninsights.sqlite --today
 ```

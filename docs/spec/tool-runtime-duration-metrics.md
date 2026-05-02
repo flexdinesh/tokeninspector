@@ -2,7 +2,7 @@
 
 ## Summary
 
-Token Inspector now stores tool-call lifecycle rows (`started`, `completed`, `error`) for OpenCode and Pi. The current CLI intentionally exposes only started-call counts and error counts. This spec outlines a future schema and aggregation path for tool runtime duration metrics without changing the current implementation scope.
+Token Insights now stores tool-call lifecycle rows (`started`, `completed`, `error`) for OpenCode and Pi. The current CLI intentionally exposes only started-call counts and error counts. This spec outlines a future schema and aggregation path for tool runtime duration metrics without changing the current implementation scope.
 
 ## Goals
 

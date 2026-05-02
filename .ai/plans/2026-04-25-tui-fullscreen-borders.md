@@ -1,4 +1,4 @@
-# Plan: Full-Screen Bordered TUI for tokeninspector CLI
+# Plan: Full-Screen Bordered TUI for tokeninsights CLI
 
 **Summary:** Switch the CLI interactive mode to a full-screen terminal UI with an outer border around the app and rounded borders around each major section (title, tabs, table, hint). The grouping popup becomes a centered floating modal.
 
@@ -63,8 +63,8 @@
 ```sh
 cd cli
 go test ./...
-go build -o tokeninspector-cli .
-./tokeninspector-cli --db-path ~/.local/state/opencode/oc-tps.sqlite --day
+go build -o tokeninsights-cli .
+./tokeninsights-cli --db-path ~/.local/state/opencode/oc-tps.sqlite --day
 ```
 
 - Verify the app launches full-screen.

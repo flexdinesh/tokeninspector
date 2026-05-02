@@ -14,9 +14,9 @@ Move all plugin code into three harness-specific directories under `plugins/`:
 - Move `plugins/types.ts` → `plugins/shared/types.ts`
 - Move `plugins/schema-migrate.ts` → `plugins/shared/schema-migrate.ts`
 - Move `plugins/writer-client.ts` → `plugins/shared/writer-client.ts`
-- Move `plugins/oc-tokeninspector-writer.ts` → `plugins/shared/oc-tokeninspector-writer.ts`
-- Move `plugins/oc-tokeninspector.tsx` → `plugins/opencode-tui/oc-tokeninspector.tsx`
-- Move `plugins/oc-tokeninspector-server.ts` → `plugins/opencode-server/oc-tokeninspector-server.ts`
+- Move `plugins/oc-tokeninsights-writer.ts` → `plugins/shared/oc-tokeninsights-writer.ts`
+- Move `plugins/oc-tokeninsights.tsx` → `plugins/opencode-tui/oc-tokeninsights.tsx`
+- Move `plugins/oc-tokeninsights-server.ts` → `plugins/opencode-server/oc-tokeninsights-server.ts`
 - Move `pi-extension/index.ts` → `plugins/pi/index.ts`
 - Move `pi-extension/package.json` → `plugins/pi/package.json`
 - Remove empty `pi-extension/` directory after move
@@ -26,13 +26,13 @@ Move all plugin code into three harness-specific directories under `plugins/`:
 
 ### 3. Update import paths
 - `plugins/shared/writer-client.ts`: no change (still `./types.ts`)
-- `plugins/shared/oc-tokeninspector-writer.ts`: no change (still `./schema-migrate.ts` and `./types.ts`)
-- `plugins/opencode-tui/oc-tokeninspector.tsx`: change `from "./types.ts"` → `from "../shared/types.ts"`
-- `plugins/opencode-server/oc-tokeninspector-server.ts`:
+- `plugins/shared/oc-tokeninsights-writer.ts`: no change (still `./schema-migrate.ts` and `./types.ts`)
+- `plugins/opencode-tui/oc-tokeninsights.tsx`: change `from "./types.ts"` → `from "../shared/types.ts"`
+- `plugins/opencode-server/oc-tokeninsights-server.ts`:
   - `from "./writer-client.ts"` → `from "../shared/writer-client.ts"`
   - `from "./schema-migrate.ts"` → `from "../shared/schema-migrate.ts"`
   - `from "./types.ts"` → `from "../shared/types.ts"`
-  - Worker URL: `new URL("./oc-tokeninspector-writer.ts", import.meta.url)` → `new URL("../shared/oc-tokeninspector-writer.ts", import.meta.url)`
+  - Worker URL: `new URL("./oc-tokeninsights-writer.ts", import.meta.url)` → `new URL("../shared/oc-tokeninsights-writer.ts", import.meta.url)`
 
 ### 4. Update schema checker path
 - `scripts/check-schema.ts`: change `TS_TYPES_PATH` from `plugins/types.ts` to `plugins/shared/types.ts`
@@ -45,4 +45,4 @@ Move all plugin code into three harness-specific directories under `plugins/`:
 ### 6. Verification
 - Run `bun run scripts/check-schema.ts`
 - Run plugin smoke builds with new paths
-- Run `cd cli && go test ./... && go build -o tokeninspector-cli .`
+- Run `cd cli && go test ./... && go build -o tokeninsights-cli .`

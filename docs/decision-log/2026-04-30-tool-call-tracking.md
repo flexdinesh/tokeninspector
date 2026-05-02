@@ -12,7 +12,7 @@ tags:
   - pi
 related_paths:
   - schema/schema.sql
-  - plugins/opencode-server/oc-tokeninspector-server.ts
+  - plugins/opencode-server/oc-tokeninsights-server.ts
   - plugins/pi/index.ts
   - cli/internal/db/aggregate.go
   - cli/internal/cli/render.go
@@ -45,4 +45,4 @@ Users need to observe tool-call activity from both OpenCode and Pi alongside exi
 
 - Old tool-call history is unavailable unless a future importer can reconstruct it from session logs.
 - If only one harness migrates/writes a DB, the CLI must tolerate the other harness's tool-call table being absent.
-- The documented Go build target is `./cmd/tokeninspector-cli`, not the `cli/` module root.
+- The documented Go build target is `./cmd/tokeninsights-cli`, not the `cli/` module root.

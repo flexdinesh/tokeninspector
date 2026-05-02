@@ -13,7 +13,7 @@ Drop the non-interactive `table` subcommand. The CLI starts directly into the bu
 
 ## Key changes
 
-### 1. Entry point (`cli/cmd/tokeninspector-cli/main.go`)
+### 1. Entry point (`cli/cmd/tokeninsights-cli/main.go`)
 - Remove `table` case from the `switch`.
 - Route all non-help invocations to `RunInteractive`.
 - Update `ErrUsage` string to reflect interactive-only syntax.
@@ -63,4 +63,4 @@ Drop the non-interactive `table` subcommand. The CLI starts directly into the bu
 
 ## Verification
 - `go test ./...` must pass.
-- `go build -o tokeninspector-cli ./cmd/tokeninspector-cli` must succeed.
+- `go build -o tokeninsights-cli ./cmd/tokeninsights-cli` must succeed.

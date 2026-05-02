@@ -1,13 +1,13 @@
-# tokeninspector-cli
+# tokeninsights-cli
 
-Query token usage data written by the TokenInspector OpenCode plugin and Pi extension.
+Query token usage data written by the TokenInsights OpenCode plugin and Pi extension.
 
 The CLI reads the SQLite database directly, aggregates rows from the OpenCode `oc_*` table family and Pi `pi_*` table family, and opens a styled terminal table grouped by day, provider, and model. With `--group-by=hour`, it expands each day into hourly buckets. With `--group-by=session`, it expands each day into session buckets.
 
 ## Usage
 
 ```sh
-~/workspace/tokeninspector/cli/tokeninspector-cli --db-path ~/.local/state/tokeninspector/tokeninspector.sqlite
+~/workspace/tokeninsights/cli/tokeninsights-cli --db-path ~/.local/state/tokeninsights/tokeninsights.sqlite
 ```
 
 The default interactive view shows the current week. Press `q` to quit. Use `↑/↓` or `j/k` to scroll vertically, `←/→` or `h/l` to scroll horizontally, and `home`/`end` to jump to the start/end of the horizontal table viewport.
@@ -15,15 +15,15 @@ The default interactive view shows the current week. Press `q` to quit. Use `↑
 More examples:
 
 ```sh
-tokeninspector-cli table --db-path ~/.local/state/tokeninspector/tokeninspector.sqlite --today
-tokeninspector-cli table --db-path ~/.local/state/tokeninspector/tokeninspector.sqlite --week
-tokeninspector-cli table --db-path ~/.local/state/tokeninspector/tokeninspector.sqlite --month
-tokeninspector-cli table --db-path ~/.local/state/tokeninspector/tokeninspector.sqlite --all-time
-tokeninspector-cli table --db-path ~/.local/state/tokeninspector/tokeninspector.sqlite --today --group-by=hour
-tokeninspector-cli table --db-path ~/.local/state/tokeninspector/tokeninspector.sqlite --week --group-by=hour
-tokeninspector-cli table --db-path ~/.local/state/tokeninspector/tokeninspector.sqlite --week --group-by=session
-tokeninspector-cli table --db-path ~/.local/state/tokeninspector/tokeninspector.sqlite --week --provider openai --model gpt-5.5
-tokeninspector-cli table --db-path ~/.local/state/tokeninspector/tokeninspector.sqlite --month --filter-day-from 2026-04-20 --filter-day-to 2026-04-25 --session-id ses_abc,ses_xyz
+tokeninsights-cli table --db-path ~/.local/state/tokeninsights/tokeninsights.sqlite --today
+tokeninsights-cli table --db-path ~/.local/state/tokeninsights/tokeninsights.sqlite --week
+tokeninsights-cli table --db-path ~/.local/state/tokeninsights/tokeninsights.sqlite --month
+tokeninsights-cli table --db-path ~/.local/state/tokeninsights/tokeninsights.sqlite --all-time
+tokeninsights-cli table --db-path ~/.local/state/tokeninsights/tokeninsights.sqlite --today --group-by=hour
+tokeninsights-cli table --db-path ~/.local/state/tokeninsights/tokeninsights.sqlite --week --group-by=hour
+tokeninsights-cli table --db-path ~/.local/state/tokeninsights/tokeninsights.sqlite --week --group-by=session
+tokeninsights-cli table --db-path ~/.local/state/tokeninsights/tokeninsights.sqlite --week --provider openai --model gpt-5.5
+tokeninsights-cli table --db-path ~/.local/state/tokeninsights/tokeninsights.sqlite --month --filter-day-from 2026-04-20 --filter-day-to 2026-04-25 --session-id ses_abc,ses_xyz
 ```
 
 ## Commands
@@ -33,9 +33,9 @@ Interactive mode
 Open the styled terminal UI. Defaults to the current week when no period flag is passed.
 
 ```sh
-tokeninspector-cli --db-path ~/.local/state/tokeninspector/tokeninspector.sqlite
-tokeninspector-cli --db-path ~/.local/state/tokeninspector/tokeninspector.sqlite --today
-tokeninspector-cli --db-path ~/.local/state/tokeninspector/tokeninspector.sqlite --month --group-by=session
+tokeninsights-cli --db-path ~/.local/state/tokeninsights/tokeninsights.sqlite
+tokeninsights-cli --db-path ~/.local/state/tokeninsights/tokeninsights.sqlite --today
+tokeninsights-cli --db-path ~/.local/state/tokeninsights/tokeninsights.sqlite --month --group-by=session
 ```
 
 `table`
@@ -46,12 +46,12 @@ Legacy alias for interactive mode.
 
 `--db-path PATH`
 
-Required. Path to the SQLite database created by TokenInspector.
+Required. Path to the SQLite database created by TokenInsights.
 
-Default TokenInspector DB path:
+Default TokenInsights DB path:
 
 ```text
-~/.local/state/tokeninspector/tokeninspector.sqlite
+~/.local/state/tokeninsights/tokeninsights.sqlite
 ```
 
 `--today`
@@ -83,8 +83,8 @@ Optional. Split the selected period by hour or session. Only one `--group-by` ca
 Optional. Filter by OpenCode session ID. Can be repeated or comma-separated.
 
 ```sh
-tokeninspector-cli table --db-path ~/.local/state/tokeninspector/tokeninspector.sqlite --week --session-id ses_abc --session-id ses_xyz
-tokeninspector-cli table --db-path ~/.local/state/tokeninspector/tokeninspector.sqlite --week --session-id ses_abc,ses_xyz
+tokeninsights-cli table --db-path ~/.local/state/tokeninsights/tokeninsights.sqlite --week --session-id ses_abc --session-id ses_xyz
+tokeninsights-cli table --db-path ~/.local/state/tokeninsights/tokeninsights.sqlite --week --session-id ses_abc,ses_xyz
 ```
 
 `--provider ID`
@@ -92,7 +92,7 @@ tokeninspector-cli table --db-path ~/.local/state/tokeninspector/tokeninspector.
 Optional. Filter by provider ID. Can be repeated or comma-separated.
 
 ```sh
-tokeninspector-cli table --db-path ~/.local/state/tokeninspector/tokeninspector.sqlite --week --provider openai --provider github-copilot
+tokeninsights-cli table --db-path ~/.local/state/tokeninsights/tokeninsights.sqlite --week --provider openai --provider github-copilot
 ```
 
 `--model ID`
@@ -100,7 +100,7 @@ tokeninspector-cli table --db-path ~/.local/state/tokeninspector/tokeninspector.
 Optional. Filter by model ID. Can be repeated or comma-separated.
 
 ```sh
-tokeninspector-cli table --db-path ~/.local/state/tokeninspector/tokeninspector.sqlite --week --model gpt-5.5 --model claude-opus-4.7
+tokeninsights-cli table --db-path ~/.local/state/tokeninsights/tokeninsights.sqlite --week --model gpt-5.5 --model claude-opus-4.7
 ```
 
 `--filter-day-from YYYY-MM-DD`
@@ -114,8 +114,8 @@ Optional. Filter to this local day (inclusive). Must be a valid `YYYY-MM-DD` dat
 These range filters apply in addition to any selected period (`--today`, `--week`, `--month`, `--all-time`).
 
 ```sh
-tokeninspector-cli table --db-path ~/.local/state/tokeninspector/tokeninspector.sqlite --month --filter-day-from 2026-04-20 --filter-day-to 2026-04-25
-tokeninspector-cli table --db-path ~/.local/state/tokeninspector/tokeninspector.sqlite --all-time --filter-day-from 2026-04-20 --filter-day-to 2026-04-25
+tokeninsights-cli table --db-path ~/.local/state/tokeninsights/tokeninsights.sqlite --month --filter-day-from 2026-04-20 --filter-day-to 2026-04-25
+tokeninsights-cli table --db-path ~/.local/state/tokeninsights/tokeninsights.sqlite --all-time --filter-day-from 2026-04-20 --filter-day-to 2026-04-25
 ```
 
 Interactive mode defaults to `--week` when no period flag is passed.
@@ -191,4 +191,4 @@ day        | session id | thinking | provider       │ model           │ tps 
 
 ## Notes
 
-The default database filename is `tokeninspector.sqlite`. Current primary table families are `oc_*` for OpenCode data and `pi_*` for Pi data.
+The default database filename is `tokeninsights.sqlite`. Current primary table families are `oc_*` for OpenCode data and `pi_*` for Pi data.

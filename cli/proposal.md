@@ -1,8 +1,8 @@
-# Proposal: Maintainable Go+SQLite patterns for `tokeninspector-cli`
+# Proposal: Maintainable Go+SQLite patterns for `tokeninsights-cli`
 
 ## Context
 
-- `tokeninspector-cli` is a read-only Go CLI over a SQLite DB written by the `oc-tokeninspector` OpenCode TUI plugin (TypeScript).
+- `tokeninsights-cli` is a read-only Go CLI over a SQLite DB written by the `oc-tokeninsights` OpenCode TUI plugin (TypeScript).
 - Single query today; schema is small; low churn.
 - Driver: `modernc.org/sqlite` (pure Go). Flat `main.go`, no migrations, no codegen, in-memory filtering/aggregation.
 - Two-repo project: writer (plugin) + reader (this CLI). Schema contract is implicit.
@@ -40,7 +40,7 @@ Key drift risk: AGENTS.md already warns contributors to update plugin + CLI toge
 Move from flat `main.go` to:
 
 ```
-/cmd/tokeninspector-cli/main.go    # flag parsing, dispatch only
+/cmd/tokeninsights-cli/main.go    # flag parsing, dispatch only
 /internal/db/
   open.go            # Open(path) *sql.DB with pragmas
   schema.go          # table/column constants, required-schema check
@@ -299,7 +299,7 @@ Defer. Adopt when query count reaches ~3+ or when a second developer joins. Curr
 - is there ever a case where reader runs against a DB being actively written to by the plugin? (affects WAL/busy_timeout stance).
 - acceptable to break flag compatibility, or strictly additive changes only?
 - reader behaviour on schema mismatch — hard fail, or warn and best-effort continue?
-- should `tokeninspector-cli` eventually gain a second subcommand (`json`, `csv`)? influences package split urgency.
+- should `tokeninsights-cli` eventually gain a second subcommand (`json`, `csv`)? influences package split urgency.
 - local-time parity: if aggregation moves to SQL, does `date(..., 'localtime')` match Go's `time.Local` formatting across DST boundaries?
 - test DB strategy: `:memory:` shared cache vs `t.TempDir()` file — pick one convention.
 - do we want `--debug-sql` from day one, or defer until a second query lands?

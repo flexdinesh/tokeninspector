@@ -1,4 +1,4 @@
-module tokeninspector-cli
+module tokeninsights-cli
 
 go 1.26
 

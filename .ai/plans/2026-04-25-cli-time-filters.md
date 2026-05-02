@@ -109,11 +109,11 @@ Replace `--day` with `--today`, redefine `--week` as calendar-week-from-Monday, 
 ## Verification Steps
 
 1. `cd cli && go test ./...` — all existing + new tests pass
-2. `cd cli && go build -o tokeninspector-cli .` — compiles
-3. Manual smoke test: `./tokeninspector-cli --db-path ~/.local/state/opencode/oc-tps.sqlite --today`
-4. Manual smoke test: `./tokeninspector-cli --db-path ~/.local/state/opencode/oc-tps.sqlite --week`
-5. Manual smoke test: `./tokeninspector-cli --db-path ~/.local/state/opencode/oc-tps.sqlite --all-time`
-6. Manual smoke test: `./tokeninspector-cli --db-path ~/.local/state/opencode/oc-tps.sqlite --month --filter-day-from 2026-04-20 --filter-day-to 2026-04-25`
+2. `cd cli && go build -o tokeninsights-cli .` — compiles
+3. Manual smoke test: `./tokeninsights-cli --db-path ~/.local/state/opencode/oc-tps.sqlite --today`
+4. Manual smoke test: `./tokeninsights-cli --db-path ~/.local/state/opencode/oc-tps.sqlite --week`
+5. Manual smoke test: `./tokeninsights-cli --db-path ~/.local/state/opencode/oc-tps.sqlite --all-time`
+6. Manual smoke test: `./tokeninsights-cli --db-path ~/.local/state/opencode/oc-tps.sqlite --month --filter-day-from 2026-04-20 --filter-day-to 2026-04-25`
 
 ## Execution Guidance
 

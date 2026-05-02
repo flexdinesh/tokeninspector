@@ -11,7 +11,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"tokeninspector-cli/internal/db"
+	"tokeninsights-cli/internal/db"
 )
 
 type reloadMsg struct {
@@ -126,7 +126,7 @@ func (m interactiveModel) measureHeights() interactiveModel {
 		return m
 	}
 
-	title := titleStyle.Render(fmt.Sprintf("Token Inspector %s", m.period))
+	title := titleStyle.Render(fmt.Sprintf("Token Insights %s", m.period))
 
 	var tabs []string
 	for i := tabTokens; i <= tabToolBreakdown; i++ {
@@ -655,7 +655,7 @@ func (m interactiveModel) View() string {
 		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, m.renderPopup())
 	}
 
-	title := titleStyle.Render(fmt.Sprintf("Token Inspector %s", m.period))
+	title := titleStyle.Render(fmt.Sprintf("Token Insights %s", m.period))
 
 	var tabs []string
 	for i := tabTokens; i <= tabToolBreakdown; i++ {

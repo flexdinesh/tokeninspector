@@ -39,5 +39,5 @@ The Bubbletea TUI runs fullscreen (`tea.WithAltScreen()`). The current `maxVisib
 ```sh
 cd cli
 go test ./...
-go build -o tokeninspector-cli .
+go build -o tokeninsights-cli .
 ```

@@ -13,7 +13,7 @@ import (
 
 func newTestDB(t *testing.T) *sql.DB {
 	t.Helper()
-	dbPath := filepath.Join(t.TempDir(), "tokeninspector.sqlite")
+	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		t.Fatal(err)
@@ -292,7 +292,7 @@ func insertToolCall(t *testing.T, db *sql.DB, table string, recordedAtMs int64, 
 }
 
 func TestOpenSchemaVersionMismatch(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "tokeninspector.sqlite")
+	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		t.Fatal(err)
@@ -733,7 +733,7 @@ func TestAggregateToolBreakdown(t *testing.T) {
 }
 
 func TestAggregateMissingTables(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "tokeninspector.sqlite")
+	dbPath := filepath.Join(t.TempDir(), "tokeninsights.sqlite")
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		t.Fatal(err)

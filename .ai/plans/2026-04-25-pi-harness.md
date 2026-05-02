@@ -1,4 +1,4 @@
-# Plan: Add Pi Harness Support to tokeninspector
+# Plan: Add Pi Harness Support to tokeninsights
 
 ## Compatibility: OpenCode vs Pi
 
@@ -74,7 +74,7 @@
 
 ### 8. Docs
 - `docs/design.md`: update architecture diagram, document Pi event flow, Pi gaps, and `pi_*` table family
-- `README.md`: add Pi extension installation instructions (symlink or copy `pi-extension/` to `~/.pi/agent/extensions/pi-tokeninspector/`)
+- `README.md`: add Pi extension installation instructions (symlink or copy `pi-extension/` to `~/.pi/agent/extensions/pi-tokeninsights/`)
 
 ### 9. Verification
 - `bun run scripts/check-schema.ts`

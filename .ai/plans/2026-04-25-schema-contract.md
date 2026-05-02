@@ -18,8 +18,8 @@
 ### Task A: Create `schema/schema.sql` (INDEPENDENT)
 
 Create `schema/schema.sql` containing all `CREATE TABLE` and `CREATE INDEX` statements from:
-- `plugins/oc-tokeninspector-writer.ts` (oc_token_events, oc_tps_samples)
-- `plugins/oc-tokeninspector-server.ts` (oc_llm_requests)
+- `plugins/oc-tokeninsights-writer.ts` (oc_token_events, oc_tps_samples)
+- `plugins/oc-tokeninsights-server.ts` (oc_llm_requests)
 
 Order: pragmas, tables, indexes. No data.
 
@@ -63,21 +63,21 @@ This makes the plugin self-sufficient: it can upgrade an old DB to the latest sc
 
 ### Task D: Update TS Writers to Use `schema.sql` + Migration Helper (DEPENDS ON A, C)
 
-- `plugins/oc-tokeninspector-writer.ts`:
+- `plugins/oc-tokeninsights-writer.ts`:
   - Remove inline DDL strings for `oc_token_events` and `oc_tps_samples`
   - Call migration helper with `schema/schema.sql` at init time
   - Keep prepared statements (they can stay inline since they're DML, not DDL)
 
-- `plugins/oc-tokeninspector-server.ts`:
+- `plugins/oc-tokeninsights-server.ts`:
   - Remove inline DDL strings for `oc_llm_requests`
   - Call migration helper with `schema/schema.sql` at init time
   - Remove the existing `ALTER TABLE ... ADD COLUMN thinking_level` (now handled by migration helper)
 
 **Verification**:
 ```sh
-bun build plugins/oc-tokeninspector.tsx --target=bun --outfile=/tmp/oc-tokeninspector-check.js --external "solid-js" --external "@opentui/solid" --external "@opentui/solid/jsx-dev-runtime"
-bun build plugins/oc-tokeninspector-writer.ts --target=bun --outfile=/tmp/oc-tokeninspector-writer-check.js
-bun build plugins/oc-tokeninspector-server.ts --target=bun --outfile=/tmp/oc-tokeninspector-server-check.js --external "@opencode-ai/plugin"
+bun build plugins/oc-tokeninsights.tsx --target=bun --outfile=/tmp/oc-tokeninsights-check.js --external "solid-js" --external "@opentui/solid" --external "@opentui/solid/jsx-dev-runtime"
+bun build plugins/oc-tokeninsights-writer.ts --target=bun --outfile=/tmp/oc-tokeninsights-writer-check.js
+bun build plugins/oc-tokeninsights-server.ts --target=bun --outfile=/tmp/oc-tokeninsights-server-check.js --external "@opencode-ai/plugin"
 ```
 
 ---
@@ -86,16 +86,16 @@ bun build plugins/oc-tokeninspector-server.ts --target=bun --outfile=/tmp/oc-tok
 
 Move shared types from three files into one:
 
-From `plugins/oc-tokeninspector.tsx`:
+From `plugins/oc-tokeninsights.tsx`:
 - `StreamSample`, `MessageTiming`, `SessionAverage`, `TrackerState`
 - `TokenCounts`, `MessageInfo`, `TokenEventSource`, `TokenEventRow`, `TpsSampleRow`
 - `TokenStorageConfig`, `TokenStorage`, `MessageInfoUpdate`, `WriterResponse`
 
-From `plugins/oc-tokeninspector-writer.ts`:
+From `plugins/oc-tokeninsights-writer.ts`:
 - `TokenEventRow`, `TpsSampleRow`, `MessageInfo`, `MessageInfoUpdate`
 - `TokenStorage` (same name, same shape — deduplicate)
 
-From `plugins/oc-tokeninspector-server.ts`:
+From `plugins/oc-tokeninsights-server.ts`:
 - `RequestRow`, `RequestStorage`
 
 Keep types that are file-specific (e.g., `InitMessage`, `FlushMessage`, `CloseMessage` in writer.ts) in their original files.
@@ -149,9 +149,9 @@ Replace manual schema checklist with:
 
 ### Task I: Update Imports Across Plugin Files (DEPENDS ON E)
 
-- `plugins/oc-tokeninspector.tsx`: import shared types from `./types.ts`
-- `plugins/oc-tokeninspector-writer.ts`: import shared types from `./types.ts`
-- `plugins/oc-tokeninspector-server.ts`: import shared types from `./types.ts`
+- `plugins/oc-tokeninsights.tsx`: import shared types from `./types.ts`
+- `plugins/oc-tokeninsights-writer.ts`: import shared types from `./types.ts`
+- `plugins/oc-tokeninsights-server.ts`: import shared types from `./types.ts`
 
 Remove duplicate type definitions. ~60 lines of duplication eliminated.
 
@@ -200,7 +200,7 @@ Since the plugin must work without the CLI, `plugins/schema-migrate.ts` implemen
 
 This handles the common case (adding tables, columns, indexes) without a full migration framework. Destructive changes (renames, drops) require manual intervention and a version bump.
 
-**Rationale**: `oc-tokeninspector-server.ts` already demonstrates this pattern with its inline `ALTER TABLE oc_llm_requests ADD COLUMN thinking_level`. The migration helper generalizes this pattern and makes it data-driven from `schema.sql`.
+**Rationale**: `oc-tokeninsights-server.ts` already demonstrates this pattern with its inline `ALTER TABLE oc_llm_requests ADD COLUMN thinking_level`. The migration helper generalizes this pattern and makes it data-driven from `schema.sql`.
 
 ---
 
@@ -237,15 +237,15 @@ After each phase:
 bun run scripts/check-schema.ts
 
 # Plugin smoke builds
-bun build plugins/oc-tokeninspector.tsx --target=bun --outfile=/tmp/oc-tokeninspector-check.js --external "solid-js" --external "@opentui/solid" --external "@opentui/solid/jsx-dev-runtime"
-bun build plugins/oc-tokeninspector-writer.ts --target=bun --outfile=/tmp/oc-tokeninspector-writer-check.js
-bun build plugins/oc-tokeninspector-server.ts --target=bun --outfile=/tmp/oc-tokeninspector-server-check.js --external "@opencode-ai/plugin"
+bun build plugins/oc-tokeninsights.tsx --target=bun --outfile=/tmp/oc-tokeninsights-check.js --external "solid-js" --external "@opentui/solid" --external "@opentui/solid/jsx-dev-runtime"
+bun build plugins/oc-tokeninsights-writer.ts --target=bun --outfile=/tmp/oc-tokeninsights-writer-check.js
+bun build plugins/oc-tokeninsights-server.ts --target=bun --outfile=/tmp/oc-tokeninsights-server-check.js --external "@opencode-ai/plugin"
 
 # Go tests
 cd cli && go test ./...
 
 # Full build
-cd cli && go build -o tokeninspector-cli .
+cd cli && go build -o tokeninsights-cli .
 ```
 
 ---

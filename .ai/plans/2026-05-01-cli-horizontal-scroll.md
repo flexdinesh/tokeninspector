@@ -17,7 +17,7 @@ Add horizontal scrolling to the interactive Go CLI table. The table will scroll 
 
 - Add/update unit tests for horizontal scroll clamping, viewport slicing, and key handling.
 - Run `cd cli && go test ./...`.
-- Run `cd cli && go build -o tokeninspector-cli ./cmd/tokeninspector-cli`.
+- Run `cd cli && go build -o tokeninsights-cli ./cmd/tokeninsights-cli`.
 
 ## Decisions made by user
 

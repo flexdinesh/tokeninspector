@@ -92,29 +92,29 @@ PRAGMA user_version = 2;
 
 // ── Config ──────────────────────────────────────────────────────────────────
 
-const DEFAULT_DB_NAME = "tokeninspector.sqlite"
+const DEFAULT_DB_NAME = "tokeninsights.sqlite"
 const DEFAULT_RETENTION_DAYS = 365
 const DAY_MS = 24 * 60 * 60 * 1000
 const UNKNOWN_VALUE = "unknown"
 
 function defaultStatePath() {
   const xdgStateHome = process.env.XDG_STATE_HOME?.trim()
-  if (xdgStateHome && xdgStateHome.length > 0) return join(xdgStateHome, "tokeninspector")
+  if (xdgStateHome && xdgStateHome.length > 0) return join(xdgStateHome, "tokeninsights")
 
   const home = process.env.HOME?.trim()
-  if (home && home.length > 0) return join(home, ".local", "state", "tokeninspector")
+  if (home && home.length > 0) return join(home, ".local", "state", "tokeninsights")
 
-  return join(process.cwd(), ".tokeninspector-state")
+  return join(process.cwd(), ".tokeninsights-state")
 }
 
 function dbPath() {
-  const configured = process.env.TOKENINSPECTOR_DB_PATH?.trim()
+  const configured = process.env.TOKENINSIGHTS_DB_PATH?.trim()
   if (!configured) return join(defaultStatePath(), DEFAULT_DB_NAME)
   return isAbsolute(configured) ? configured : join(defaultStatePath(), configured)
 }
 
 function retentionDays() {
-  const configured = process.env.TOKENINSPECTOR_RETENTION_DAYS?.trim()
+  const configured = process.env.TOKENINSIGHTS_RETENTION_DAYS?.trim()
   if (!configured) return DEFAULT_RETENTION_DAYS
 
   const parsed = Number(configured)
@@ -266,7 +266,7 @@ function initDb(): boolean {
     return true
   } catch (err) {
     dbInitFailed = true
-    console.error("pi-tokeninspector: db init failed, tracking disabled:", err)
+    console.error("pi-tokeninsights: db init failed, tracking disabled:", err)
     return false
   }
 }
@@ -314,7 +314,7 @@ function insertToolCallRow(input: {
       input.status,
     ])
   } catch (err) {
-    console.error("pi-tokeninspector: tool call insert failed:", err)
+    console.error("pi-tokeninsights: tool call insert failed:", err)
   }
 }
 
@@ -372,7 +372,7 @@ export default function (pi: ExtensionAPI) {
         state.thinkingLevel,
       ])
     } catch (err) {
-      console.error("pi-tokeninspector: request insert failed:", err)
+      console.error("pi-tokeninsights: request insert failed:", err)
     }
   })
 
@@ -481,7 +481,7 @@ export default function (pi: ExtensionAPI) {
         cacheRead, cacheWrite, totalTokens,
       ])
     } catch (err) {
-      console.error("pi-tokeninspector: token event insert failed:", err)
+      console.error("pi-tokeninsights: token event insert failed:", err)
     }
 
     // Compute TPS
@@ -502,7 +502,7 @@ export default function (pi: ExtensionAPI) {
         durationMs, ttftMs, tps,
       ])
     } catch (err) {
-      console.error("pi-tokeninspector: tps sample insert failed:", err)
+      console.error("pi-tokeninsights: tps sample insert failed:", err)
     }
 
     pruneDaily()

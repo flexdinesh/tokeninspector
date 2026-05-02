@@ -34,20 +34,20 @@ Move SQLite writes out of TUI event handlers into a dedicated worker. The TUI ke
 - Run TUI smoke build:
 
 ```sh
-bun build plugins/oc-tokeninspector.tsx --target=bun --outfile=/tmp/oc-tokeninspector-check.js --external "solid-js" --external "@opentui/solid" --external "@opentui/solid/jsx-dev-runtime"
+bun build plugins/oc-tokeninsights.tsx --target=bun --outfile=/tmp/oc-tokeninsights-check.js --external "solid-js" --external "@opentui/solid" --external "@opentui/solid/jsx-dev-runtime"
 ```
 
 - If worker is not covered by that build, run:
 
 ```sh
-bun build plugins/oc-tokeninspector-writer.ts --target=bun --outfile=/tmp/oc-tokeninspector-writer-check.js
+bun build plugins/oc-tokeninsights-writer.ts --target=bun --outfile=/tmp/oc-tokeninsights-writer-check.js
 ```
 
 - Run CLI verification only if schema/query assumptions change:
 
 ```sh
 go test ./...
-go build -o tokeninspector-cli .
+go build -o tokeninsights-cli .
 ```
 
 ## Decisions Made

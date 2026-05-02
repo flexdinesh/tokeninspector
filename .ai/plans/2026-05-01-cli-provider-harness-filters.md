@@ -77,7 +77,7 @@ No schema changes are required.
 ```sh
 cd cli
 go test ./...
-go build -o tokeninspector-cli ./cmd/tokeninspector-cli
+go build -o tokeninsights-cli ./cmd/tokeninsights-cli
 ```
 
 ## Tradeoffs and risks

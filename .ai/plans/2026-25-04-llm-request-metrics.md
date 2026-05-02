@@ -4,14 +4,14 @@ Summary: Add request-attempt tracking via a separate OpenCode server plugin, per
 
 ## Implementation Changes
 
-- Add `plugins/oc-tokeninspector-server.ts`.
+- Add `plugins/oc-tokeninsights-server.ts`.
 - Use server hook `chat.headers`.
 - On each hook call, write one row to new SQLite table `oc_llm_requests`.
 - Store `recorded_at`, `recorded_at_ms`, `session_id`, `message_id`, `provider`, `model`, `attempt_index`.
 - `requests` = count where `attempt_index == 1`.
 - `retries` = count where `attempt_index > 1`.
 - Track attempts in-memory by `session_id + message_id + provider + model`.
-- Server plugin uses the same default DB location as OpenCode state on this machine via `XDG_STATE_HOME`/`~/.local/state/opencode`, with `OC_TOKENINSPECTOR_DB_PATH` and `OC_TOKENINSPECTOR_RETENTION_DAYS` overrides. TUI `api.state.path.state` is not available to server plugins.
+- Server plugin uses the same default DB location as OpenCode state on this machine via `XDG_STATE_HOME`/`~/.local/state/opencode`, with `OC_TOKENINSIGHTS_DB_PATH` and `OC_TOKENINSIGHTS_RETENTION_DAYS` overrides. TUI `api.state.path.state` is not available to server plugins.
 - Add indexes for `recorded_at_ms`, `(session_id, recorded_at_ms)`, `(provider, model, recorded_at_ms)`.
 - Add retention cleanup for request rows.
 - Update CLI to query `oc_llm_requests` if table exists.
@@ -27,7 +27,7 @@ Summary: Add request-attempt tracking via a separate OpenCode server plugin, per
 - Go DB-query tests for request rows when table exists.
 - Go DB-query tests for CLI compatibility when `oc_llm_requests` is absent.
 - Plugin smoke builds for TUI and server plugin.
-- CLI verification with `go test ./...` and `go build -o tokeninspector-cli .`.
+- CLI verification with `go test ./...` and `go build -o tokeninsights-cli .`.
 
 ## Decisions Made
 

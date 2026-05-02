@@ -4,7 +4,7 @@
 
 - **Server plugin collects all durable data**: token events, TPS samples, fallback rows, LLM requests.
 - **TUI plugin only handles live display**: `message.part.delta` estimates for live TPS banner + DB queries for session averages/TTFT.
-- **Server plugin writes via shared worker thread**: `oc-tokeninspector-writer.ts` is shared between TUI and server. Both post to the same Bun worker.
+- **Server plugin writes via shared worker thread**: `oc-tokeninsights-writer.ts` is shared between TUI and server. Both post to the same Bun worker.
 - **Session averages become persistent**: TUI queries `oc_tps_samples` instead of tracking in-memory averages that reset on restart.
 - **DB query interval is configurable**: `const BANNER_REFRESH_MS = 2000` in TUI plugin.
 - **No schema changes**: tables remain the same; only event handlers move.
@@ -14,7 +14,7 @@
 
 ## Phase 1: Extract Shared Writer Logic
 
-### Task A: Extract `createTokenStorage` from `oc-tokeninspector-writer.ts` into `plugins/writer-client.ts`
+### Task A: Extract `createTokenStorage` from `oc-tokeninsights-writer.ts` into `plugins/writer-client.ts`
 
 Create `plugins/writer-client.ts`:
 
@@ -30,7 +30,7 @@ export function createTokenStorage(
 
 Implementation: copy the existing `createTokenStorage` logic (Worker spawn, init/flush/close postMessage, ready/error tracking). Parameterize the worker URL via `importMetaUrl` so both TUI and server can construct the correct relative URL.
 
-Keep `plugins/oc-tokeninspector-writer.ts` as the worker entry point (it registers `self.onmessage`). No changes to the worker code itself.
+Keep `plugins/oc-tokeninsights-writer.ts` as the worker entry point (it registers `self.onmessage`). No changes to the worker code itself.
 
 **Verification**: smoke build passes for both plugins importing `writer-client.ts`.
 
@@ -57,7 +57,7 @@ export type WriterConfig = {
 
 ### Task C: Move durable event handlers from TUI to server plugin
 
-Update `plugins/oc-tokeninspector-server.ts`:
+Update `plugins/oc-tokeninsights-server.ts`:
 
 1. **Import `createTokenStorage` from `./writer-client.ts`**
 2. **Add `event` hook** handling:
@@ -101,14 +101,14 @@ Update `plugins/oc-tokeninspector-server.ts`:
 
 **Verification**:
 ```sh
-bun build plugins/oc-tokeninspector-server.ts --target=bun --outfile=/tmp/oc-tokeninspector-server-check.js --external "@opencode-ai/plugin"
+bun build plugins/oc-tokeninsights-server.ts --target=bun --outfile=/tmp/oc-tokeninsights-server-check.js --external "@opencode-ai/plugin"
 ```
 
 ---
 
 ### Task D: Remove durable collection from TUI plugin
 
-Update `plugins/oc-tokeninspector.tsx`:
+Update `plugins/oc-tokeninsights.tsx`:
 
 1. **Remove all DB write plumbing**:
    - Remove `createTokenStorage` call and `storage` management
@@ -149,7 +149,7 @@ Update `plugins/oc-tokeninspector.tsx`:
 
 **Verification**:
 ```sh
-bun build plugins/oc-tokeninspector.tsx --target=bun --outfile=/tmp/oc-tokeninspector-check.js --external "solid-js" --external "@opentui/solid" --external "@opentui/solid/jsx-dev-runtime"
+bun build plugins/oc-tokeninsights.tsx --target=bun --outfile=/tmp/oc-tokeninsights-check.js --external "solid-js" --external "@opentui/solid" --external "@opentui/solid/jsx-dev-runtime"
 ```
 
 ---
@@ -259,15 +259,15 @@ Document:
 bun run scripts/check-schema.ts
 
 # Plugin smoke builds
-bun build plugins/oc-tokeninspector.tsx --target=bun --outfile=/tmp/oc-tokeninspector-check.js --external "solid-js" --external "@opentui/solid" --external "@opentui/solid/jsx-dev-runtime"
-bun build plugins/oc-tokeninspector-writer.ts --target=bun --outfile=/tmp/oc-tokeninspector-writer-check.js
-bun build plugins/oc-tokeninspector-server.ts --target=bun --outfile=/tmp/oc-tokeninspector-server-check.js --external "@opencode-ai/plugin"
+bun build plugins/oc-tokeninsights.tsx --target=bun --outfile=/tmp/oc-tokeninsights-check.js --external "solid-js" --external "@opentui/solid" --external "@opentui/solid/jsx-dev-runtime"
+bun build plugins/oc-tokeninsights-writer.ts --target=bun --outfile=/tmp/oc-tokeninsights-writer-check.js
+bun build plugins/oc-tokeninsights-server.ts --target=bun --outfile=/tmp/oc-tokeninsights-server-check.js --external "@opencode-ai/plugin"
 
 # Go tests
 cd cli && go test ./...
 
 # Full CLI build
-cd cli && go build -o tokeninspector-cli .
+cd cli && go build -o tokeninsights-cli .
 ```
 
 ---
